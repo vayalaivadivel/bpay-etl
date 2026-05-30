@@ -180,7 +180,7 @@ resource "aws_dms_replication_task" "mysql_cdc_task" {
 
         "object-locator" = {
 
-          "schema-name" = "rldb"
+          "schema-name" = "bpaydb"
 
           "table-name" = "offer"
         }

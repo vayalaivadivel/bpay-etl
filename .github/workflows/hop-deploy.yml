@@ -100,7 +100,7 @@ jobs:
 
         with:
 
-          role-to-assume: arn:aws:iam::986401823783:role/s2pb-githubaction-role
+          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
 
           aws-region: ${{ env.AWS_REGION }}
 

@@ -144,9 +144,9 @@ http://<alb-dns>/hop
 | ------------------- | -------------------------- |
 | airflow             | Airflow metadata           |
 | hop                 | Hop metadata/configuration |
-| rldb_raw_dev        | Raw ingestion layer        |
-| rldb_replicated_dev | Replicated data            |
-| rldb_unified_dev    | Unified/reporting layer    |
+| bpaydb_raw_dev        | Raw ingestion layer        |
+| bpaydb_replicated_dev | Replicated data            |
+| bpaydb_unified_dev    | Unified/reporting layer    |
 
 ---
 

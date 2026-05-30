@@ -40,13 +40,17 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::986401823783:role/s2pb-githubaction-role
+          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
           aws-region: ap-south-1
+          
+      - name: Verify AWS Login
+        run: |
+          aws sts get-caller-identity
 
       - name: Create EC2 PEM file
         run: |
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key-new.pem
-          chmod 400 bastion-key-new.pem
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
+          chmod 400 bastion-key.pem
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3

@@ -28,15 +28,15 @@ private_subnets = [
 
 db_username = "ravula"
 
-db_password = "password"
+db_password = "ravula"
 
-db_name = "rldb"
+db_name = "bpaydb"
 
 #########################################
 # EC2
 #########################################
 
-key_name = "ravula-key"
+key_name = "bastion-key"
 
 #########################################
 # APACHE HOP
@@ -44,4 +44,4 @@ key_name = "ravula-key"
 
 hop_username = "ravula"
 
-hop_password = "password"
+hop_password = "ravula"
