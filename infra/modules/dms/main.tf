@@ -182,7 +182,7 @@ resource "aws_dms_replication_task" "mysql_cdc_task" {
 
           "schema-name" = "bpaydb"
 
-          "table-name" = "offer"
+          "table-name" = "%"
         }
 
         "rule-action" = "include"
