@@ -44,4 +44,4 @@ key_name = "bastion-key"
 
 hop_username = "ravula"
 
-hop_password = Rravula@123"
+hop_password = "Ravula@123"
