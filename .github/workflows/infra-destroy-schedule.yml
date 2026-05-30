@@ -1,28 +1,43 @@
-name: Scheduled Terraform Destroy
+name: Infra-Setup
 
 on:
-  schedule:
-    - cron: '0 15 * * *'   # 8:30 PM IST daily
-
   workflow_dispatch:
+    inputs:
+
+      environment:
+        description: "Select environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+      action:
+        description: "Choose action"
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: terraform-destroy-dev
+  group: terraform-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
 jobs:
 
-  terraform-destroy:
+  terraform:
 
     runs-on: ubuntu-latest
 
     timeout-minutes: 90
 
-    environment: dev
+    environment: ${{ github.event.inputs.environment }}
 
     defaults:
       run:
@@ -30,51 +45,121 @@ jobs:
 
     env:
       TF_IN_AUTOMATION: true
-      ENVIRONMENT: dev
 
     steps:
+
+      ####################################################
+      # CHECKOUT
+      ####################################################
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
-          aws-region: ap-south-1
-          
-      - name: Verify AWS Login
-        run: |
-          aws sts get-caller-identity
+      ####################################################
+      # DEBUG
+      ####################################################
 
-      - name: Create EC2 PEM file
+      - name: Debug Repository
         run: |
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
-          chmod 400 bastion-key.pem
+          echo "Repository=${{ github.repository }}"
+          echo "Branch=${{ github.ref }}"
+          echo "Environment=${{ github.event.inputs.environment }}"
+          echo "Action=${{ github.event.inputs.action }}"
+
+      ####################################################
+      # TERRAFORM SETUP
+      ####################################################
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: false
+          terraform_version: 1.8.5
+
+      ####################################################
+      # AWS OIDC LOGIN
+      ####################################################
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
+
+      ####################################################
+      # VERIFY AWS LOGIN
+      ####################################################
+
+      - name: Verify AWS Login
+        run: |
+          aws sts get-caller-identity
+
+      ####################################################
+      # CREATE PEM FILE
+      ####################################################
+
+      - name: Create PEM File
+        run: |
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
+          chmod 400 bastion-key.pem
+
+      ####################################################
+      # TERRAFORM FORMAT
+      ####################################################
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      ####################################################
+      # TERRAFORM INIT
+      ####################################################
 
       - name: Terraform Init
         run: |
-          terraform init -upgrade \
-            -backend-config="key=bpay-etl/${ENVIRONMENT}/terraform.tfstate"
+          terraform init
+
+      ####################################################
+      # TERRAFORM VALIDATE
+      ####################################################
 
       - name: Terraform Validate
-        run: terraform validate
-
-      - name: Delete Hop ECR Image
         run: |
-          aws ecr batch-delete-image \
-            --repository-name glorytechsystems-platform-images \
-            --image-ids imageTag=bpay-etl-${ENVIRONMENT} \
-            --region ap-south-1 || true
+          terraform validate
+
+      ####################################################
+      # TERRAFORM PLAN
+      ####################################################
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file=environments/${{ github.event.inputs.environment }}.tfvars \
+            -out=tfplan
+
+      ####################################################
+      # TERRAFORM APPLY
+      ####################################################
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        run: |
+          terraform apply -auto-approve tfplan
+
+      ####################################################
+      # TERRAFORM DESTROY
+      ####################################################
 
       - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
         run: |
           terraform destroy \
-            -parallelism=20 \
             -auto-approve \
-            -var-file=environments/${ENVIRONMENT}.tfvars
+            -var-file=environments/${{ github.event.inputs.environment }}.tfvars
+
+      ####################################################
+      # TERRAFORM OUTPUTS
+      ####################################################
+
+      - name: Terraform Outputs
+        if: github.event.inputs.action == 'apply'
+        run: |
+          terraform output
