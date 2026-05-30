@@ -28,7 +28,7 @@ private_subnets = [
 
 db_username = "ravula"
 
-db_password = "ravula"
+db_password = "Ravula@123"
 
 db_name = "bpaydb"
 
@@ -44,4 +44,4 @@ key_name = "bastion-key"
 
 hop_username = "ravula"
 
-hop_password = "ravula"
+hop_password = Rravula@123"
