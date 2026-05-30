@@ -1,0 +1,206 @@
+name: Airflow-Deploy
+
+on:
+
+  push:
+
+    branches:
+      - main
+
+    paths:
+      - 'airflow-orchestration/**'
+
+  workflow_dispatch:
+
+    inputs:
+
+      environment:
+        description: "Select environment"
+
+        required: true
+
+        default: dev
+
+        type: choice
+
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+
+  id-token: write
+
+  contents: read
+
+jobs:
+
+  airflow-deploy:
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 60
+
+    env:
+
+      #######################################################
+      # AWS
+      #######################################################
+
+      AWS_REGION: ap-south-1
+
+      AWS_ACCOUNT_ID: 986401823783
+
+      #######################################################
+      # APPLICATION
+      #######################################################
+
+      APP_NAME: bpay-etl
+
+      ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+
+      #######################################################
+      # ECR
+      #######################################################
+
+      ECR_REPOSITORY: glorytechsystems-platform-images
+
+      IMAGE_TAG: bpay-etl-airflow-${{ github.event.inputs.environment || 'dev' }}
+
+      IMAGE_URI: 986401823783.dkr.ecr.ap-south-1.amazonaws.com/glorytechsystems-platform-images:bpay-etl-airflow-${{ github.event.inputs.environment || 'dev' }}
+      #######################################################
+      # ECS
+      #######################################################
+
+      ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
+
+      ECS_SERVICE_NAME: bpay-etl-airflow-service-${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+
+      #######################################################
+      # CHECKOUT
+      #######################################################
+
+      - name: Checkout Repository
+
+        uses: actions/checkout@v4
+
+      #######################################################
+      # CONFIGURE AWS
+      #######################################################
+
+      - name: Configure AWS Credentials
+
+        uses: aws-actions/configure-aws-credentials@v4
+
+        with:
+
+          role-to-assume: arn:aws:iam::986401823783:role/s2pb-githubaction-role
+
+          aws-region: ap-south-1
+
+      #######################################################
+      # LOGIN TO ECR
+      #######################################################
+
+      - name: Login to Amazon ECR
+
+        uses: aws-actions/amazon-ecr-login@v2
+
+      #######################################################
+      # BUILD DOCKER IMAGE
+      #######################################################
+
+      - name: Build Docker Image
+
+        run: |
+
+          docker build \
+            -t bpay-etl-airflow:${IMAGE_TAG} \
+            -f airflow-orchestration/docker/Dockerfile \
+            ./airflow-orchestration
+
+      #######################################################
+      # TAG DOCKER IMAGE
+      #######################################################
+
+      - name: Tag Docker Image
+
+        run: |
+
+          docker tag \
+            bpay-etl-airflow:${IMAGE_TAG} \
+            ${IMAGE_URI}
+
+      #######################################################
+      # PUSH IMAGE TO ECR
+      #######################################################
+
+      - name: Push Docker Image
+
+        run: |
+
+          docker push ${IMAGE_URI}
+
+      #######################################################
+      # FORCE ECS DEPLOYMENT
+      #######################################################
+
+      - name: Restart ECS Service
+
+        run: |
+
+          aws ecs update-service \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --service ${ECS_SERVICE_NAME} \
+            --force-new-deployment \
+            --region ${AWS_REGION}
+      - name: Verify ECS Deployment
+
+        run: |
+
+          aws ecs describe-services \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --services ${ECS_SERVICE_NAME} \
+            --region ${AWS_REGION}
+      #######################################################
+      # DISPLAY SUCCESS
+      #######################################################
+
+      - name: Deployment Successful
+
+        run: |
+
+          echo "======================================="
+
+          echo "Apache Airflow Deployment Successful"
+
+          echo "======================================="
+
+          echo "Environment: ${ENVIRONMENT}"
+
+          echo ""
+
+          echo "Image URI:"
+
+          echo "${IMAGE_URI}"
+
+          echo ""
+
+          echo "ECS Cluster:"
+
+          echo "${ECS_CLUSTER_NAME}"
+
+          echo ""
+
+          echo "ECS Service:"
+
+          echo "${ECS_SERVICE_NAME}"
+
+          echo ""
+
+          echo "Deployment completed successfully"
+
+          echo "======================================="

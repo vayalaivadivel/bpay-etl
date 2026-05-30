@@ -1,0 +1,245 @@
+name: Hop-Deploy
+
+on:
+
+  push:
+
+    branches:
+      - main
+
+    paths:
+      - 'hop-orchestration/**'
+
+  workflow_dispatch:
+
+    inputs:
+
+      environment:
+        description: "Select environment"
+
+        required: true
+
+        default: dev
+
+        type: choice
+
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+
+  id-token: write
+
+  contents: read
+
+jobs:
+
+  hop-deploy:
+
+    name: Apache Hop ECS Deployment
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 60
+
+    env:
+
+      #######################################################
+      # AWS
+      #######################################################
+
+      AWS_REGION: ap-south-1
+
+      AWS_ACCOUNT_ID: 986401823783
+
+      #######################################################
+      # APPLICATION
+      #######################################################
+
+      APP_NAME: bpay-etl
+
+      ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+
+      #######################################################
+      # ECR
+      #######################################################
+
+      ECR_REPOSITORY: glorytechsystems-platform-images
+
+      IMAGE_TAG: bpay-etl-hop-${{ github.event.inputs.environment || 'dev' }}
+
+      IMAGE_URI: 986401823783.dkr.ecr.ap-south-1.amazonaws.com/glorytechsystems-platform-images:bpay-etl-hop-${{ github.event.inputs.environment || 'dev' }}
+
+      #######################################################
+      # ECS
+      #######################################################
+
+      ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
+
+      ECS_SERVICE_NAME: bpay-etl-hop-service-${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+
+      #######################################################
+      # CHECKOUT
+      #######################################################
+
+      - name: Checkout Repository
+
+        uses: actions/checkout@v4
+
+      #######################################################
+      # CONFIGURE AWS
+      #######################################################
+
+      - name: Configure AWS Credentials
+
+        uses: aws-actions/configure-aws-credentials@v4
+
+        with:
+
+          role-to-assume: arn:aws:iam::986401823783:role/s2pb-githubaction-role
+
+          aws-region: ${{ env.AWS_REGION }}
+
+      #######################################################
+      # LOGIN TO ECR
+      #######################################################
+
+      - name: Login to Amazon ECR
+
+        uses: aws-actions/amazon-ecr-login@v2
+
+      #######################################################
+      # VERIFY ECR REPOSITORY
+      #######################################################
+
+      - name: Verify ECR Repository
+
+        run: |
+
+          aws ecr describe-repositories \
+            --repository-names ${ECR_REPOSITORY} \
+            --region ${AWS_REGION}
+
+      #######################################################
+      # BUILD IMAGE
+      #######################################################
+
+      - name: Build Docker Image
+
+        run: |
+
+          echo "======================================="
+          echo "Building Apache Hop Image"
+          echo "======================================="
+
+          docker build \
+            --no-cache \
+            -t ${APP_NAME}:${IMAGE_TAG} \
+            -f hop-orchestration/docker/Dockerfile \
+            ./hop-orchestration
+
+      #######################################################
+      # TAG IMAGE
+      #######################################################
+
+      - name: Tag Docker Image
+
+        run: |
+
+          docker tag \
+            ${APP_NAME}:${IMAGE_TAG} \
+            ${IMAGE_URI}
+
+      #######################################################
+      # PUSH IMAGE
+      #######################################################
+
+      - name: Push Docker Image
+
+        run: |
+
+          docker push ${IMAGE_URI}
+
+      #######################################################
+      # VERIFY IMAGE EXISTS
+      #######################################################
+
+      - name: Verify Image in ECR
+
+        run: |
+
+          aws ecr describe-images \
+            --repository-name ${ECR_REPOSITORY} \
+            --image-ids imageTag=${IMAGE_TAG} \
+            --region ${AWS_REGION}
+
+      #######################################################
+      # FORCE DEPLOYMENT
+      #######################################################
+
+      - name: Restart ECS Service
+
+        run: |
+
+          aws ecs update-service \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --service ${ECS_SERVICE_NAME} \
+            --force-new-deployment \
+            --region ${AWS_REGION}
+
+      #######################################################
+      # VERIFY SERVICE
+      #######################################################
+
+      - name: Verify ECS Service
+
+        run: |
+
+          aws ecs describe-services \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --services ${ECS_SERVICE_NAME} \
+            --region ${AWS_REGION}
+
+      #######################################################
+      # SHOW RECENT ECS EVENTS
+      #######################################################
+
+      - name: Show ECS Service Events
+
+        run: |
+
+          aws ecs describe-services \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --services ${ECS_SERVICE_NAME} \
+            --query 'services[0].events[0:10]' \
+            --region ${AWS_REGION}
+
+      #######################################################
+      # SUCCESS
+      #######################################################
+
+      - name: Deployment Successful
+
+        run: |
+
+          echo "======================================="
+          echo "Apache Hop Deployment Successful"
+          echo "======================================="
+          echo ""
+          echo "Environment:"
+          echo "${ENVIRONMENT}"
+          echo ""
+          echo "Image:"
+          echo "${IMAGE_URI}"
+          echo ""
+          echo "Cluster:"
+          echo "${ECS_CLUSTER_NAME}"
+          echo ""
+          echo "Service:"
+          echo "${ECS_SERVICE_NAME}"
+          echo ""
+          echo "======================================="

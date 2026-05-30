@@ -1,0 +1,5 @@
+apache-airflow-providers-amazon
+apache-airflow-providers-mysql
+mysqlclient
+boto3
+pandas
