@@ -34,12 +34,6 @@ module "rds" {
   private_subnets = module.vpc.private_subnets
 
   vpc_id = module.vpc.vpc_id
-
-  dms_security_group_id = module.dms.dms_security_group_id
-
-  airflow_security_group_id = module.airflow.airflow_security_group_id
-
-  bastion_security_group_id = module.ec2.security_group_id
 }
 
 ############################################################
@@ -254,4 +248,40 @@ module "airflow" {
   db_password = var.db_password
 
   rds_endpoint = module.rds.rds_endpoint
+}
+
+
+resource "aws_security_group_rule" "rds_from_bastion" {
+
+  type = "ingress"
+
+  from_port = 3306
+
+  to_port = 3306
+
+  protocol = "tcp"
+
+  security_group_id = module.rds.rds_sg_id
+
+  source_security_group_id = module.ec2.security_group_id
+
+  description = "Allow Bastion to connect to MySQL RDS"
+}
+
+
+resource "aws_security_group_rule" "rds_from_dms" {
+
+  type = "ingress"
+
+  from_port = 3306
+
+  to_port = 3306
+
+  protocol = "tcp"
+
+  security_group_id = module.rds.rds_sg_id
+
+  source_security_group_id = module.dms.dms_security_group_id
+
+  description = "Allow DMS to connect to MySQL RDS"
 }
