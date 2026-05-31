@@ -285,3 +285,18 @@ resource "aws_security_group_rule" "rds_from_dms" {
 
   description = "Allow DMS to connect to MySQL RDS"
 }
+
+resource "aws_security_group_rule" "rds_from_airflow" {
+
+  type = "ingress"
+
+  from_port = 3306
+
+  to_port = 3306
+
+  protocol = "tcp"
+
+  security_group_id = module.rds.rds_sg_id
+
+  source_security_group_id = module.airflow.airflow_security_group_id
+}
