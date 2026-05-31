@@ -68,6 +68,20 @@ jobs:
         aws-region: ap-south-1
 
     #########################################
+    # INSTALL MYSQL CLIENT
+    #########################################
+
+    - name: Install MySQL Client
+      run: |
+
+        sudo apt-get update
+
+        sudo apt-get install -y mysql-client || \
+        sudo apt-get install -y default-mysql-client
+
+        mysql --version
+
+    #########################################
     # CREATE PEM FILE
     #########################################
 

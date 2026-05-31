@@ -158,6 +158,10 @@ module "dms" {
   private_subnets = module.vpc.private_subnets
 
   vpc_id = module.vpc.vpc_id
+
+  depends_on = [
+    module.db_init
+  ]
 }
 
 ############################################################
@@ -299,4 +303,25 @@ resource "aws_security_group_rule" "rds_from_airflow" {
   security_group_id = module.rds.rds_sg_id
 
   source_security_group_id = module.airflow.airflow_security_group_id
+}
+
+module "db_init" {
+
+  source = "./modules/db_init"
+
+  rds_host = split(":", module.rds.rds_endpoint)[0]
+
+  db_user = var.db_username
+
+  db_password = var.db_password
+
+  raw_db_name = local.raw_db_name
+
+  replicated_db_name = local.replicated_db_name
+
+  unified_db_name = local.unified_db_name
+
+  depends_on = [
+    module.rds
+  ]
 }

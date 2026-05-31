@@ -114,7 +114,7 @@ resource "aws_iam_role_policy_attachment" "dms_vpc_attach" {
 
 resource "aws_iam_role" "dms_logs_role" {
 
-  name = "dms-logs-role"
+  name = "dms-cloudwatch-logs-role"
 
   force_detach_policies = true
 

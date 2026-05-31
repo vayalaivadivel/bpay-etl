@@ -5,7 +5,7 @@ CREATE SCHEMA IF NOT EXISTS ${db_name};
 -- 1. Patients Table
 -- =====================================================
 
-CREATE TABLE IF NOT EXISTS bpaydb.patients (
+CREATE TABLE IF NOT EXISTS  ${db_name}.patients (
     patient_id INT PRIMARY KEY,
     patient_name VARCHAR(100),
     gender VARCHAR(10),
@@ -97,13 +97,6 @@ VALUES
 (5003, 1004, '2026-05-04', 'NETBANKING', 25000.00, 'SUCCESS'),
 
 (5004, 1005, '2026-05-05', 'CASH', 3000.00, 'SUCCESS');
-
-
-CREATE DATABASE IF NOT EXISTS ${raw_db_name};
-
-CREATE DATABASE IF NOT EXISTS ${replicated_db_name};
-
-CREATE DATABASE IF NOT EXISTS ${unified_db_name};
 
 # AIRFLOW DATABASE 
 CREATE DATABASE IF NOT EXISTS airflow;
