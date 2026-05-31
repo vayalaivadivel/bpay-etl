@@ -93,3 +93,16 @@ variable "private_key_path" {
 
   type = string
 }
+
+
+variable "raw_db_name" {
+  type = string
+}
+
+variable "replicated_db_name" {
+  type = string
+}
+
+variable "unified_db_name" {
+  type = string
+}

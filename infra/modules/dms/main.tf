@@ -123,7 +123,6 @@ resource "aws_dms_endpoint" "mysql_source" {
 #########################################
 # MYSQL TARGET ENDPOINT
 #########################################
-
 resource "aws_dms_endpoint" "mysql_target" {
 
   endpoint_id = "${var.app_name}-${var.env}-mysql-target"
@@ -143,13 +142,7 @@ resource "aws_dms_endpoint" "mysql_target" {
   database_name = var.raw_db_name
 
   ssl_mode = "none"
-
-  tags = {
-
-    Name = "${var.app_name}-${var.env}-mysql-target"
-  }
 }
-
 #########################################
 # DMS REPLICATION TASK
 #########################################
@@ -166,6 +159,7 @@ resource "aws_dms_replication_task" "mysql_cdc_task" {
 
   target_endpoint_arn = aws_dms_endpoint.mysql_target.endpoint_arn
 
+
   table_mappings = jsonencode({
 
     rules = [
@@ -176,11 +170,11 @@ resource "aws_dms_replication_task" "mysql_cdc_task" {
 
         "rule-id" = "1"
 
-        "rule-name" = "1"
+        "rule-name" = "all_tables"
 
         "object-locator" = {
 
-          "schema-name" = "bpaydb"
+          "schema-name" = var.mysql_database
 
           "table-name" = "%"
         }
@@ -189,6 +183,7 @@ resource "aws_dms_replication_task" "mysql_cdc_task" {
       }
     ]
   })
+
 
   replication_task_settings = jsonencode({
 

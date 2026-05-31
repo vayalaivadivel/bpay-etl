@@ -1,5 +1,5 @@
 -- Create Schema
-CREATE SCHEMA IF NOT EXISTS bpaydb;
+CREATE SCHEMA IF NOT EXISTS ${db_name};
 
 -- =====================================================
 -- 1. Patients Table
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS bpaydb.patients (
 -- 2. Billing Table
 -- =====================================================
 
-CREATE TABLE IF NOT EXISTS bpaydb.billing (
+CREATE TABLE IF NOT EXISTS  ${db_name}.billing (
     bill_id INT PRIMARY KEY,
     patient_id INT,
     treatment_type VARCHAR(100),
@@ -28,14 +28,14 @@ CREATE TABLE IF NOT EXISTS bpaydb.billing (
     bill_amount DECIMAL(12,2),
     bill_status VARCHAR(20),
     FOREIGN KEY (patient_id)
-        REFERENCES bpaydb.patients(patient_id)
+        REFERENCES  ${db_name}.patients(patient_id)
 );
 
 -- =====================================================
 -- 3. Payments Table
 -- =====================================================
 
-CREATE TABLE IF NOT EXISTS bpaydb.payments (
+CREATE TABLE IF NOT EXISTS ${db_name}.payments (
     payment_id INT PRIMARY KEY,
     bill_id INT,
     payment_date DATE,
@@ -43,14 +43,14 @@ CREATE TABLE IF NOT EXISTS bpaydb.payments (
     paid_amount DECIMAL(12,2),
     transaction_status VARCHAR(20),
     FOREIGN KEY (bill_id)
-        REFERENCES bpaydb.billing(bill_id)
+        REFERENCES  ${db_name}.billing(bill_id)
 );
 
 -- =====================================================
 -- Insert Patients
 -- =====================================================
 
-INSERT INTO bpaydb.patients
+INSERT INTO  ${db_name}.patients
 (patient_id, patient_name, gender, age, phone_number, city)
 VALUES
 (101, 'Ravi Kumar', 'Male', 35, '9876543210', 'Hyderabad'),
@@ -63,7 +63,7 @@ VALUES
 -- Insert Billing Records
 -- =====================================================
 
-INSERT INTO bpaydb.billing
+INSERT INTO  ${db_name}.billing
 (bill_id, patient_id, treatment_type, doctor_name,
  bill_date, bill_amount, bill_status)
 VALUES
@@ -86,7 +86,7 @@ VALUES
 -- Insert Payments
 -- =====================================================
 
-INSERT INTO bpaydb.payments
+INSERT INTO  ${db_name}.payments
 (payment_id, bill_id, payment_date,
  payment_mode, paid_amount, transaction_status)
 VALUES
@@ -99,11 +99,11 @@ VALUES
 (5004, 1005, '2026-05-05', 'CASH', 3000.00, 'SUCCESS');
 
 
-CREATE DATABASE IF NOT EXISTS bpaydb_raw_dev;
+CREATE DATABASE IF NOT EXISTS ${raw_db_name};
 
-CREATE DATABASE IF NOT EXISTS bpaydb_replicated_dev;
+CREATE DATABASE IF NOT EXISTS ${replicated_db_name};
 
-CREATE DATABASE IF NOT EXISTS bpaydb_unified_dev; 
+CREATE DATABASE IF NOT EXISTS ${unified_db_name};
 
 # AIRFLOW DATABASE 
 CREATE DATABASE IF NOT EXISTS airflow;

@@ -45,7 +45,6 @@ module "rds" {
 ############################################################
 # EC2 BASTION
 ############################################################
-
 module "ec2" {
 
   source = "./modules/ec2"
@@ -80,11 +79,21 @@ module "ec2" {
 
   db_name = local.db_name
 
+  raw_db_name = local.raw_db_name
+
+  replicated_db_name = local.replicated_db_name
+
+  unified_db_name = local.unified_db_name
+
   ##########################################################
   # SSH
   ##########################################################
 
   private_key_path = "${path.root}/ravula-key.pem"
+
+  depends_on = [
+    module.rds
+  ]
 }
 ############################################################
 # LAMBDA
