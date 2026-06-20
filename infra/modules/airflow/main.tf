@@ -148,7 +148,7 @@ resource "aws_ecs_task_definition" "airflow" {
         {
           name  = "AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX"
           value = "True"
-        }
+        },
 
         {
           name  = "AIRFLOW__WEBSERVER__COOKIE_SAMESITE"
