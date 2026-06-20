@@ -1,5 +1,13 @@
 -- Create Schema
-CREATE SCHEMA IF NOT EXISTS ${db_name};
+CREATE DATABASE IF NOT EXISTS ${raw_db_name};
+CREATE DATABASE IF NOT EXISTS ${replicated_db_name};
+CREATE DATABASE IF NOT EXISTS ${unified_db_name};
+
+CREATE DATABASE IF NOT EXISTS airflow;
+CREATE DATABASE IF NOT EXISTS hop;
+
+CREATE DATABASE IF NOT EXISTS ${db_name};
+USE ${db_name};
 
 -- =====================================================
 -- 1. Patients Table
@@ -97,9 +105,3 @@ VALUES
 (5003, 1004, '2026-05-04', 'NETBANKING', 25000.00, 'SUCCESS'),
 
 (5004, 1005, '2026-05-05', 'CASH', 3000.00, 'SUCCESS');
-
-# AIRFLOW DATABASE 
-CREATE DATABASE IF NOT EXISTS airflow;
-
-# HOP Database
-CREATE DATABASE IF NOT EXISTS hop;

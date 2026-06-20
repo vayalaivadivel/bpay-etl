@@ -17,3 +17,7 @@ variable "env" {
 
   type = string
 }
+variable "bastion_security_group_id" {
+  description = "Bastion Security Group ID"
+  type        = string
+}

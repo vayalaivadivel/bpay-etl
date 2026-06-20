@@ -34,6 +34,8 @@ module "rds" {
   private_subnets = module.vpc.private_subnets
 
   vpc_id = module.vpc.vpc_id
+
+  bastion_security_group_id = module.ec2.bastion_security_group_id
 }
 
 ############################################################
@@ -160,7 +162,7 @@ module "dms" {
   vpc_id = module.vpc.vpc_id
 
   depends_on = [
-    module.db_init
+    time_sleep.wait_for_db_init
   ]
 }
 
@@ -305,23 +307,11 @@ resource "aws_security_group_rule" "rds_from_airflow" {
   source_security_group_id = module.airflow.airflow_security_group_id
 }
 
-module "db_init" {
-
-  source = "./modules/db_init"
-
-  rds_host = split(":", module.rds.rds_endpoint)[0]
-
-  db_user = var.db_username
-
-  db_password = var.db_password
-
-  raw_db_name = local.raw_db_name
-
-  replicated_db_name = local.replicated_db_name
-
-  unified_db_name = local.unified_db_name
+resource "time_sleep" "wait_for_db_init" {
 
   depends_on = [
-    module.rds
+    module.ec2
   ]
+
+  create_duration = "180s"
 }

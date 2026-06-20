@@ -100,8 +100,7 @@ echo "Running database initialization..."
 mysql \
   -h "${rds_host}" \
   -u "${db_user}" \
-  -p"${db_password}" \
-  "${db_name}" < /home/ubuntu/init.sql
+  -p"${db_password}" < /home/ubuntu/init.sql
 
 #########################################
 # VALIDATE DB INIT
