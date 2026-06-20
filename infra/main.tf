@@ -35,7 +35,6 @@ module "rds" {
 
   vpc_id = module.vpc.vpc_id
 
-  bastion_security_group_id = module.ec2.bastion_security_group_id
 }
 
 ############################################################
@@ -155,7 +154,7 @@ module "dms" {
 
   dms_vpc_role_dependency = module.iam.dms_vpc_role_ready
 
-  security_group_id = module.ec2.security_group_id
+  security_group_id = module.ec2.bastion_security_group_id
 
   private_subnets = module.vpc.private_subnets
 
@@ -269,11 +268,10 @@ resource "aws_security_group_rule" "rds_from_bastion" {
 
   security_group_id = module.rds.rds_sg_id
 
-  source_security_group_id = module.ec2.security_group_id
+  source_security_group_id = module.ec2.bastion_security_group_id
 
   description = "Allow Bastion to connect to MySQL RDS"
 }
-
 
 resource "aws_security_group_rule" "rds_from_dms" {
 
