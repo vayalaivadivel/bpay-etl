@@ -320,3 +320,18 @@ resource "time_sleep" "wait_for_db_init" {
 
   create_duration = "180s"
 }
+
+############################################################
+# ROUTE53
+############################################################
+
+module "route53" {
+
+  source = "./modules/route53"
+
+  app_name = local.app_name
+
+  env = var.env
+
+  domain_name = var.domain_name
+}
