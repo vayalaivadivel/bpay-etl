@@ -94,3 +94,18 @@ output "route53_name_servers" {
 
   value = module.route53.name_servers
 }
+
+output "domain_name" {
+
+  value = var.domain_name
+}
+
+output "airflow_fqdn" {
+
+  value = "${var.env}-airflow.${var.domain_name}"
+}
+
+output "hop_fqdn" {
+
+  value = "${var.env}-hop.${var.domain_name}"
+}
