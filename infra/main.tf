@@ -334,4 +334,10 @@ module "route53" {
   env = var.env
 
   domain_name = var.domain_name
+
+  alb_dns_name = module.hop.alb_dns
+
+  depends_on = [
+    module.hop
+  ]
 }
