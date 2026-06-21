@@ -108,43 +108,6 @@ resource "aws_iam_role_policy_attachment" "dms_vpc_attach" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole"
 }
 
-#########################################
-# DMS CLOUDWATCH LOGS ROLE
-#########################################
-
-resource "aws_iam_role" "dms_logs_role" {
-
-  name = "dms-cloudwatch-logs-role"
-
-  force_detach_policies = true
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-
-    Statement = [
-      {
-        Effect = "Allow"
-
-        Action = "sts:AssumeRole"
-
-        Principal = {
-          Service = "dms.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-#########################################
-# DMS CLOUDWATCH POLICY ATTACHMENT
-#########################################
-
-resource "aws_iam_role_policy_attachment" "dms_logs_attach" {
-
-  role = aws_iam_role.dms_logs_role.name
-
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonDMSCloudWatchLogsRole"
-}
 
 #########################################
 # DMS ACCESS ROLE
