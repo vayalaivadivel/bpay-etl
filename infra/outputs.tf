@@ -51,7 +51,7 @@ output "alb_dns" {
 
 output "platform_url" {
 
-  value = "http://${module.hop.alb_dns}"
+  value = "http://${var.env}-hop.${var.domain_name}"
 }
 
 #########################################
@@ -60,7 +60,7 @@ output "platform_url" {
 
 output "hop_url" {
 
-  value = "http://${module.hop.alb_dns}/hop/status"
+  value = "http://${var.env}-hop.${var.domain_name}/status"
 }
 
 #########################################
@@ -69,7 +69,7 @@ output "hop_url" {
 
 output "airflow_url" {
 
-  value = "http://${module.hop.alb_dns}/airflow"
+  value = "http://${var.env}-airflow.${var.domain_name}"
 }
 
 #########################################

@@ -24,17 +24,17 @@ resource "aws_route53_record" "airflow" {
   ]
 }
 
-resource "aws_route53_record" "hop" {
+resource "aws_route53_zone" "this" {
 
-  zone_id = aws_route53_zone.this.zone_id
+  name = var.domain_name
 
-  name = "${var.env}-hop.${var.domain_name}"
+  lifecycle {
+    prevent_destroy = true
+  }
 
-  type = "CNAME"
-
-  ttl = 300
-
-  records = [
-    var.alb_dns_name
-  ]
+  tags = {
+    Name        = "${var.app_name}-dns-${var.env}"
+    Project     = var.app_name
+    Environment = var.env
+  }
 }
