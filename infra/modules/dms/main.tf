@@ -74,7 +74,8 @@ resource "aws_dms_replication_instance" "dms_instance" {
 
   depends_on = [
     aws_dms_replication_subnet_group.this,
-    var.dms_vpc_role_dependency
+    var.dms_vpc_role_dependency,
+    var.dms_cloudwatch_role_dependency
   ]
 
   timeouts {

@@ -1,7 +1,7 @@
 resource "aws_iam_role" "dms_cloudwatch_logs_role" {
 
-  name = "dms-cloudwatch-logs-role"
-
+  name                  = "dms-cloudwatch-logs-role"
+  force_detach_policies = true
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

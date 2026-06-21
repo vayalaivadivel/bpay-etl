@@ -154,6 +154,8 @@ module "dms" {
 
   dms_vpc_role_dependency = module.iam.dms_vpc_role_ready
 
+  dms_cloudwatch_role_dependency = module.iam.dms_cloudwatch_role_dependency
+
   security_group_id = module.ec2.bastion_security_group_id
 
   private_subnets = module.vpc.private_subnets

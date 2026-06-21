@@ -20,3 +20,6 @@ variable "vpc_id" {
 variable "app_name" {
   type = string
 }
+variable "dms_cloudwatch_role_dependency" {
+  type = any
+}
