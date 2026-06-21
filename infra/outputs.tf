@@ -80,3 +80,17 @@ variable "ssh_user" {
 
   default = "ubuntu"
 }
+
+output "route53_zone_id" {
+
+  description = "Route53 Hosted Zone ID"
+
+  value = module.route53.zone_id
+}
+
+output "route53_name_servers" {
+
+  description = "Route53 Name Servers"
+
+  value = module.route53.name_servers
+}
