@@ -290,3 +290,36 @@ resource "aws_ecs_service" "hop" {
     aws_lb_listener.hop
   ]
 }
+
+resource "aws_lb_listener_rule" "hop_host" {
+
+  listener_arn = aws_lb_listener.hop.arn
+
+  priority = 140
+
+  action {
+
+    type = "forward"
+
+    target_group_arn = aws_lb_target_group.hop.arn
+  }
+
+  condition {
+
+    host_header {
+
+      values = [
+        "${var.env}-hop.${var.domain_name}"
+      ]
+    }
+  }
+
+  tags = {
+
+    Name = "${var.app_name}-hop-host-rule-${var.env}"
+
+    Project = var.app_name
+
+    Environment = var.env
+  }
+}

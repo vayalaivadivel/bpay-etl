@@ -45,3 +45,4 @@ key_name = "bastion-key"
 hop_username = "ravula"
 
 hop_password = "Ravula!123"
+domain_name  = "sakki.in"

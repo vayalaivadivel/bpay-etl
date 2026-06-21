@@ -221,6 +221,9 @@ module "hop" {
   ##########################################################
 
   ecr_repository_url = "986401823783.dkr.ecr.ap-south-1.amazonaws.com/glorytechsystems-platform-images"
+
+  domain_name = var.domain_name
+
 }
 
 module "airflow" {
@@ -255,6 +258,8 @@ module "airflow" {
   db_password = var.db_password
 
   rds_endpoint = module.rds.rds_endpoint
+
+  domain_name = var.domain_name
 }
 
 

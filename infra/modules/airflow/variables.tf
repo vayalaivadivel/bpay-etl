@@ -64,3 +64,7 @@ variable "db_password" {
 }
 
 variable "rds_endpoint" {}
+variable "domain_name" {
+
+  type = string
+}

@@ -142,7 +142,7 @@ resource "aws_ecs_task_definition" "airflow" {
 
         {
           name  = "AIRFLOW__WEBSERVER__BASE_URL"
-          value = "http://${var.alb_dns_name}/airflow"
+          value = "http://${var.env}-airflow.${var.domain_name}"
         },
 
         {
@@ -283,5 +283,39 @@ resource "aws_lb_listener_rule" "airflow" {
 
       values = ["/airflow/*"]
     }
+  }
+}
+
+
+resource "aws_lb_listener_rule" "airflow_host" {
+
+  listener_arn = var.alb_listener_arn
+
+  priority = 150
+
+  action {
+
+    type = "forward"
+
+    target_group_arn = aws_lb_target_group.airflow.arn
+  }
+
+  condition {
+
+    host_header {
+
+      values = [
+        "${var.env}-airflow.${var.domain_name}"
+      ]
+    }
+  }
+
+  tags = {
+
+    Name = "${var.app_name}-airflow-host-rule-${var.env}"
+
+    Project = var.app_name
+
+    Environment = var.env
   }
 }

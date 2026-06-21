@@ -3,11 +3,6 @@ variable "region" {
   type = string
 }
 
-variable "env" {
-
-  type = string
-}
-
 #########################################
 # APP
 #########################################
@@ -93,4 +88,15 @@ variable "hop_password" {
 variable "aws_region" {
 
   type = string
+}
+
+variable "env" {
+  description = "Deployment environment"
+  type        = string
+}
+
+variable "domain_name" {
+  description = "Base domain name"
+  type        = string
+  default     = "sakki.in"
 }
