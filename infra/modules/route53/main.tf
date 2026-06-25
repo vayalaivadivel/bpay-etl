@@ -1,12 +1,3 @@
-moved {
-  from = aws_route53_record.airflow
-  to   = aws_route53_record.records["airflow"]
-}
-
-moved {
-  from = aws_route53_record.hop
-  to   = aws_route53_record.records["hop"]
-}
 ############################################################
 # ROUTE53 HOSTED ZONE
 ############################################################
@@ -25,6 +16,10 @@ resource "aws_route53_zone" "this" {
     Environment = var.env
   }
 }
+
+############################################################
+# DNS RECORDS
+############################################################
 
 resource "aws_route53_record" "records" {
 
