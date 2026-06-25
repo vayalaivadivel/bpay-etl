@@ -1,3 +1,12 @@
+moved {
+  from = aws_route53_record.airflow
+  to   = aws_route53_record.records["airflow"]
+}
+
+moved {
+  from = aws_route53_record.hop
+  to   = aws_route53_record.records["hop"]
+}
 ############################################################
 # ROUTE53 HOSTED ZONE
 ############################################################
@@ -17,34 +26,13 @@ resource "aws_route53_zone" "this" {
   }
 }
 
-############################################################
-# AIRFLOW DNS
-############################################################
+resource "aws_route53_record" "records" {
 
-resource "aws_route53_record" "airflow" {
+  for_each = var.dns_records
 
   zone_id = aws_route53_zone.this.zone_id
 
-  name = "${var.env}-airflow.${var.domain_name}"
-
-  type = "CNAME"
-
-  ttl = 300
-
-  records = [
-    var.alb_dns_name
-  ]
-}
-
-############################################################
-# HOP DNS
-############################################################
-
-resource "aws_route53_record" "hop" {
-
-  zone_id = aws_route53_zone.this.zone_id
-
-  name = "${var.env}-hop.${var.domain_name}"
+  name = "${var.env}-${each.value}.${var.domain_name}"
 
   type = "CNAME"
 
