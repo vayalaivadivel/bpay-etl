@@ -13,3 +13,8 @@ variable "domain_name" {
 variable "alb_dns_name" {
   type = string
 }
+
+variable "dns_records" {
+  description = "DNS records to create"
+  type        = map(string)
+}

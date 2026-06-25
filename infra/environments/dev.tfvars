@@ -46,3 +46,7 @@ hop_username = "ravula"
 
 hop_password = "Ravula!123"
 domain_name  = "sakki.in"
+dns_records = {
+  airflow = "airflow"
+  hop     = "hop"
+}
