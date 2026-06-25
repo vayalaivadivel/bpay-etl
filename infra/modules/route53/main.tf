@@ -18,16 +18,33 @@ resource "aws_route53_zone" "this" {
 }
 
 ############################################################
-# DNS RECORDS
+# AIRFLOW DNS
 ############################################################
 
-resource "aws_route53_record" "records" {
-
-  for_each = var.dns_records
+resource "aws_route53_record" "airflow" {
 
   zone_id = aws_route53_zone.this.zone_id
 
-  name = "${var.env}-${each.value}.${var.domain_name}"
+  name = "${var.env}-airflow.${var.domain_name}"
+
+  type = "CNAME"
+
+  ttl = 300
+
+  records = [
+    var.alb_dns_name
+  ]
+}
+
+############################################################
+# HOP DNS
+############################################################
+
+resource "aws_route53_record" "hop" {
+
+  zone_id = aws_route53_zone.this.zone_id
+
+  name = "${var.env}-hop.${var.domain_name}"
 
   type = "CNAME"
 
