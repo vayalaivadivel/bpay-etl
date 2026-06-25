@@ -1,3 +1,26 @@
+############################################################
+# ROUTE53 HOSTED ZONE
+############################################################
+
+resource "aws_route53_zone" "this" {
+
+  name = var.domain_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = {
+    Name        = "${var.app_name}-dns-${var.env}"
+    Project     = var.app_name
+    Environment = var.env
+  }
+}
+
+############################################################
+# DNS RECORDS
+############################################################
+
 resource "aws_route53_record" "records" {
 
   for_each = var.dns_records

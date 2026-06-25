@@ -100,3 +100,10 @@ variable "domain_name" {
   type        = string
   default     = "sakki.in"
 }
+
+variable "dns_records" {
+
+  description = "DNS records to create"
+
+  type = map(string)
+}

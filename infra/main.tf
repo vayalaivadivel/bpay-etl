@@ -337,7 +337,5 @@ module "route53" {
 
   alb_dns_name = module.hop.alb_dns
 
-  depends_on = [
-    module.hop
-  ]
+  dns_records = var.dns_records
 }
