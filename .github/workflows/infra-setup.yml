@@ -103,6 +103,34 @@ jobs:
         terraform_wrapper: false
 
     #########################################
+    # VERIFY OIDC LOGIN
+    #########################################
+
+    - name: Verify AWS Login
+
+      run: |
+
+        echo "===================================="
+
+        echo "GitHub Repository"
+
+        echo "${{ github.repository }}"
+
+        echo
+
+        echo "GitHub Branch"
+
+        echo "${{ github.ref_name }}"
+
+        echo
+
+        echo "AWS Identity"
+
+        aws sts get-caller-identity
+
+        echo "===================================="
+
+    #########################################
     # TERRAFORM INIT
     #########################################
 
