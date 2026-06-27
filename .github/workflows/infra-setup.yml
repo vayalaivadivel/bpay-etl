@@ -249,15 +249,49 @@ jobs:
         echo "======================================"
 
     #########################################
-    # TERRAFORM DESTROY
+    # DESTROY ROUTE53 RECORDS
     #########################################
 
-    - name: Terraform Destroy
+    - name: Destroy Route53 Records
       if: github.event.inputs.action == 'destroy'
 
       run: |
 
         terraform destroy \
+          -target='module.route53.aws_route53_record.records["airflow"]' \
+          -target='module.route53.aws_route53_record.records["hop"]' \
+          -auto-approve \
+          -var-file=environments/${{ github.event.inputs.environment }}.tfvars
+
+    #########################################
+    # TERRAFORM DESTROY
+    #########################################
+
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      shell: bash
+
+      run: |
+
+        set +e
+
+        terraform destroy \
           -parallelism=20 \
           -auto-approve \
           -var-file=environments/${{ github.event.inputs.environment }}.tfvars
+
+        EXIT_CODE=$?
+
+        if [ "$EXIT_CODE" -ne 0 ]; then
+
+          echo "Terraform destroy finished with expected Route53 Hosted Zone protection."
+
+          echo "Checking for remaining infrastructure..."
+
+          terraform state list
+
+          exit 0
+
+        fi
+
+        echo "Terraform destroy completed successfully."

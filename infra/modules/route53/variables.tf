@@ -18,3 +18,9 @@ variable "dns_records" {
   description = "DNS records to create"
   type        = map(string)
 }
+
+variable "create_hosted_zone" {
+  description = "Whether to create Route53 Hosted Zone"
+  type        = bool
+  default     = true
+}
