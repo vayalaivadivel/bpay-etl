@@ -1,10 +1,4 @@
-############################################################
-# ROUTE53 HOSTED ZONE
-############################################################
-
 resource "aws_route53_zone" "this" {
-
-  count = var.create_hosted_zone ? 1 : 0
 
   name = var.domain_name
 
@@ -18,10 +12,6 @@ resource "aws_route53_zone" "this" {
     Environment = var.env
   }
 }
-
-############################################################
-# DNS RECORDS
-############################################################
 
 resource "aws_route53_record" "records" {
 
