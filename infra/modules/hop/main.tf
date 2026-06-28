@@ -146,22 +146,16 @@ resource "aws_lb_target_group" "hop" {
   ##########################################################
 
   health_check {
-
-    enabled = true
-
-    healthy_threshold = 2
-
+    enabled             = true
+    healthy_threshold   = 2
     unhealthy_threshold = 5
-
-    interval = 60
-
-    timeout = 30
-
-    path = "/status"
+    interval            = 60
+    timeout             = 30
 
     protocol = "HTTP"
-
-    matcher = "200-399"
+    port     = "8081"
+    path     = "/"
+    matcher  = "200"
   }
 }
 
@@ -213,17 +207,16 @@ resource "aws_ecs_task_definition" "hop" {
 
       essential = true
 
-      portMappings = [
-
-        {
-
-          containerPort = 8080
-
-          hostPort = 8080
-
-          protocol = "tcp"
-        }
-      ]
+      "portMappings": [
+          {
+            "containerPort": 8080,
+            "protocol": "tcp"
+          },
+          {
+            "containerPort": 8081,
+            "protocol": "tcp"
+          }
+        ]
 
       ######################################################
       # CLOUDWATCH LOGS

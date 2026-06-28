@@ -13,6 +13,7 @@ USER root
 RUN apk add --no-cache \
     curl \
     bash \
+    busybox \
     tzdata
 
 ##########################################################
@@ -42,7 +43,7 @@ RUN chmod +x /files/scripts/*.sh || true
 ##########################################################
 
 ENV HOP_SERVER_PORT=8080
-ENV HOP_SERVER_HOST=0.0.0.0
+ENV HOP_SERVER_HOSTNAME=0.0.0.0
 ENV HOP_LOG_LEVEL=Basic
 
 ##########################################################
@@ -58,20 +59,21 @@ ENV JAVA_OPTS="-Xms512m -Xmx1024m"
 ENV TZ=Asia/Kolkata
 
 ##########################################################
-# EXPOSE PORT
+# EXPOSE PORTS
 ##########################################################
 
 EXPOSE 8080
+EXPOSE 8081
 
 ##########################################################
-# HEALTH CHECK
+# HEALTHCHECK (Docker)
 ##########################################################
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/hop/status || exit 1
+CMD curl -fs http://localhost:8081/ || exit 1
 
 ##########################################################
-# START APACHE HOP SERVER
+# START SCRIPT
 ##########################################################
 
-CMD ["/bin/sh", "-c", "/opt/hop/start-hop-server.sh"]
+ENTRYPOINT ["/files/scripts/start.sh"]
