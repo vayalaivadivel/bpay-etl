@@ -46,6 +46,8 @@ jobs:
 
     env:
       TF_IN_AUTOMATION: true
+      TF_VAR_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      
     steps:
 
     #########################################

@@ -107,3 +107,9 @@ variable "dns_records" {
 
   type = map(string)
 }
+
+variable "public_key" {
+  description = "SSH public key"
+  type        = string
+  default     = ""
+}
