@@ -249,21 +249,6 @@ jobs:
         echo "======================================"
 
     #########################################
-    # DESTROY ROUTE53 RECORDS
-    #########################################
-
-    - name: Destroy Route53 Records
-      if: github.event.inputs.action == 'destroy'
-
-      run: |
-
-        terraform destroy \
-          -target='module.route53.aws_route53_record.records["airflow"]' \
-          -target='module.route53.aws_route53_record.records["hop"]' \
-          -auto-approve \
-          -var-file=environments/${{ github.event.inputs.environment }}.tfvars
-
-    #########################################
     # TERRAFORM DESTROY
     #########################################
 
