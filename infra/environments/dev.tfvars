@@ -36,7 +36,7 @@ db_name = "bpaydb"
 # EC2
 #########################################
 
-key_name = "bastion-key"
+key_name = "bpay-etl-bastion-key"
 
 #########################################
 # APACHE HOP
