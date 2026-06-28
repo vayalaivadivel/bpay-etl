@@ -1,0 +1,106 @@
+name: Bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: bootstrap
+  cancel-in-progress: false
+
+jobs:
+
+  bootstrap:
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: bootstrap
+
+    env:
+      TF_IN_AUTOMATION: true
+
+    steps:
+
+    #########################################
+    # CHECKOUT
+    #########################################
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    #########################################
+    # CONFIGURE AWS
+    #########################################
+
+    - name: Configure AWS (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+
+      with:
+        role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+        aws-region: ap-south-1
+
+    #########################################
+    # VERIFY LOGIN
+    #########################################
+
+    - name: Verify AWS Login
+      run: aws sts get-caller-identity
+
+    #########################################
+    # SETUP TERRAFORM
+    #########################################
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+      with:
+        terraform_wrapper: false
+
+    #########################################
+    # INIT
+    #########################################
+
+    - name: Terraform Init
+      run: terraform init
+
+    #########################################
+    # VALIDATE
+    #########################################
+
+    - name: Terraform Validate
+      run: terraform validate
+
+    #########################################
+    # FORMAT
+    #########################################
+
+    - name: Terraform Format Check
+      run: terraform fmt -check
+
+    #########################################
+    # PLAN
+    #########################################
+
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan
+
+    #########################################
+    # APPLY
+    #########################################
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
+
+    #########################################
+    # OUTPUTS
+    #########################################
+
+    - name: Display Outputs
+      run: terraform output
