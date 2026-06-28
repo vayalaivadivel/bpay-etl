@@ -1,23 +1,13 @@
-resource "aws_route53_zone" "this" {
-
-  name = var.domain_name
-
-  #lifecycle {
-  #  prevent_destroy = true
-  #}
-
-  tags = {
-    Name        = "${var.app_name}-dns-${var.env}"
-    Project     = var.app_name
-    Environment = var.env
-  }
+data "aws_route53_zone" "this" {
+  name         = var.domain_name
+  private_zone = false
 }
 
 resource "aws_route53_record" "records" {
 
   for_each = var.dns_records
 
-  zone_id = aws_route53_zone.this.zone_id
+  zone_id = data.aws_route53_zone.this.zone_id
 
   name = "${var.env}-${each.value}.${var.domain_name}"
 
