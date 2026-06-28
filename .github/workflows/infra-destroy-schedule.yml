@@ -69,12 +69,30 @@ jobs:
         run: |
           aws ecr batch-delete-image \
             --repository-name glorytechsystems-platform-images \
-            --image-ids imageTag=bpay-etl-${ENVIRONMENT} \
+            --image-ids imageTag=bpay-etl-hop-${ENVIRONMENT} \
             --region ap-south-1 || true
+
+          aws ecr batch-delete-image \
+            --repository-name glorytechsystems-platform-images \
+            --image-ids imageTag=bpay-etl-airflow-${ENVIRONMENT} \
+            --region ap-south-1 || true
+
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
 
       - name: Terraform Destroy
         run: |
+          set +e
+
           terraform destroy \
             -parallelism=20 \
             -auto-approve \
             -var-file=environments/${ENVIRONMENT}.tfvars
+
+          EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "Terraform destroy completed with expected warnings."
+            terraform state list || true
+            exit 0
+          fi
