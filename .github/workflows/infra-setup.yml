@@ -243,7 +243,12 @@ jobs:
 
         aws ecr batch-delete-image \
           --repository-name glorytechsystems-platform-images \
-          --image-ids imageTag=bpay-etl-${{ github.event.inputs.environment }} \
+           --image-ids imageTag=bpay-etl-hop-${{ github.event.inputs.environment }} \
+          --region ap-south-1 || true
+
+        aws ecr batch-delete-image \
+          --repository-name glorytechsystems-platform-images \
+           --image-ids imageTag=bpay-etl-airflow-${{ github.event.inputs.environment }} \
           --region ap-south-1 || true
 
         echo "======================================"

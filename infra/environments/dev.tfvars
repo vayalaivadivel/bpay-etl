@@ -36,7 +36,9 @@ db_name = "bpaydb"
 # EC2
 #########################################
 
-key_name = "bpay-etl-bastion-key"
+key_name   = "bpay-etl-bastion-key"
+
+public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTij7lAhW5+VTHnCcMwV+/X/qRVPF5JMvQIz9OJL2fL bpay-etl"
 
 #########################################
 # APACHE HOP
@@ -50,7 +52,3 @@ dns_records = {
   airflow = "airflow"
   hop     = "hop"
 }
-
-key_name   = "bpay-etl-bastion-key"
-
-public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTij7lAhW5+VTHnCcMwV+/X/qRVPF5JMvQIz9OJL2fL bpay-etl"
