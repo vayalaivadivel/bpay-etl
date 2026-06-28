@@ -37,7 +37,7 @@ output "bastion_public_dns" {
 
 output "bastion_ssh_command" {
 
-  value = "ssh -i bastion-key.pem ubuntu@${module.ec2.public_ip}"
+  value = "ssh -i ~/.ssh/${var.app_name} ubuntu@${module.ec2.public_ip}"
 }
 
 #########################################
