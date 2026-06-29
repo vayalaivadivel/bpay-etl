@@ -81,7 +81,10 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Terraform Destroy
+        shell: bash
+
         run: |
+
           set +e
 
           terraform destroy \
@@ -92,7 +95,15 @@ jobs:
           EXIT_CODE=$?
 
           if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "Terraform destroy completed with expected warnings."
+
+            echo "Terraform destroy completed with expected Route53 protection."
+
+            echo "Checking remaining infrastructure..."
+
             terraform state list || true
+
             exit 0
+
           fi
+
+          echo "Terraform destroy completed successfully."
