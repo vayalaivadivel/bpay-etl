@@ -68,12 +68,12 @@ EXPOSE 8080
 CMD ["bash", "-c", "\
 airflow db migrate && \
 (airflow users create \
-  --username ravula \
-  --password ravula \
-  --firstname Airflow \
-  --lastname Admin \
+  --username vadivel \
+  --password vadivel \
+  --firstname Vadivel \
+  --lastname PM \
   --role Admin \
-  --email ravulapbi@gmail.com || true) && \
+  --email vayalaivadivel@gmail.com || true) && \
 airflow scheduler > /opt/airflow/logs/scheduler.log 2>&1 & \
 sleep 60 && \
 exec airflow webserver"]

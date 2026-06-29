@@ -26,9 +26,9 @@ private_subnets = [
 # DATABASE
 #########################################
 
-db_username = "ravula"
+db_username = "vadivel"
 
-db_password = "Ravula!123"
+db_password = "Vadivel!123"
 
 db_name = "bpaydb"
 
