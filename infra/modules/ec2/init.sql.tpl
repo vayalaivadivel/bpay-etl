@@ -1,14 +1,3 @@
--- Create Schema
-CREATE DATABASE IF NOT EXISTS ${raw_db_name};
-CREATE DATABASE IF NOT EXISTS ${replicated_db_name};
-CREATE DATABASE IF NOT EXISTS ${unified_db_name};
-
-CREATE DATABASE IF NOT EXISTS airflow;
-CREATE DATABASE IF NOT EXISTS hop;
-
-CREATE DATABASE IF NOT EXISTS ${db_name};
-USE ${db_name};
-
 -- =====================================================
 -- CREATE DATABASES
 -- =====================================================
@@ -179,11 +168,13 @@ CREATE TABLE IF NOT EXISTS ${db_name}.reward_points (
         REFERENCES ${db_name}.transactions(transaction_id)
 );
 
+START TRANSACTION;
+
 -- =====================================================
 -- INSERT CARDHOLDERS
 -- =====================================================
 
-INSERT INTO ${db_name}.cardholders
+INSERT IGNORE INTO ${db_name}.cardholders
 VALUES
 (101,'Rahul Sharma','rahul@gmail.com','9876500001','Hyderabad','Telangana','Gold',NOW()),
 (102,'Priya Nair','priya@gmail.com','9876500002','Bengaluru','Karnataka','Silver',NOW()),
@@ -195,7 +186,7 @@ VALUES
 -- INSERT CARDS
 -- =====================================================
 
-INSERT INTO ${db_name}.cards
+INSERT IGNORE INTO ${db_name}.cards
 VALUES
 (1001,101,'4111111111111111','Visa','HDFC',500000,'ACTIVE','2024-01-10'),
 (1002,102,'5555555555554444','Mastercard','ICICI',300000,'ACTIVE','2024-02-12'),
@@ -207,7 +198,7 @@ VALUES
 -- INSERT MERCHANT CATEGORIES
 -- =====================================================
 
-INSERT INTO ${db_name}.merchant_categories
+INSERT IGNORE INTO ${db_name}.merchant_categories
 VALUES
 (1,'Fuel',2.0),
 (2,'Grocery',3.0),
@@ -219,7 +210,7 @@ VALUES
 -- INSERT TRANSACTIONS
 -- =====================================================
 
-INSERT INTO ${db_name}.transactions
+INSERT IGNORE INTO ${db_name}.transactions
 VALUES
 (5001,1001,1,'Indian Oil',2500,'INR','2026-06-01','SUCCESS'),
 (5002,1002,2,'DMart',5200,'INR','2026-06-02','SUCCESS'),
@@ -231,17 +222,17 @@ VALUES
 -- INSERT OFFERS
 -- =====================================================
 
-INSERT INTO ${db_name}.offers
+INSERT IGNORE INTO ${db_name}.offers
 VALUES
 (1,'Amazon','10% Cashback',10,5000,'2026-06-01','2026-12-31','ACTIVE'),
-(2,'DMart','5% Cashback',3000,'2026-06-01','2026-12-31','ACTIVE'),
-(3,'Indian Oil','2X Reward Points',1000,'2026-06-01','2026-12-31','ACTIVE');
+(2,'DMart','5% Cashback',5,3000,'2026-06-01','2026-12-31','ACTIVE'),
+(3,'Indian Oil','2X Reward Points',2,1000,'2026-06-01','2026-12-31','ACTIVE');
 
 -- =====================================================
 -- INSERT CAMPAIGNS
 -- =====================================================
 
-INSERT INTO ${db_name}.campaigns
+INSERT IGNORE INTO ${db_name}.campaigns
 VALUES
 (1,'Summer Rewards','Cashback','2026-06-01','2026-08-31','ACTIVE'),
 (2,'Travel Bonanza','Travel','2026-06-01','2026-09-30','ACTIVE');
@@ -250,10 +241,12 @@ VALUES
 -- INSERT REWARD POINTS
 -- =====================================================
 
-INSERT INTO ${db_name}.reward_points
+INSERT IGNORE INTO ${db_name}.reward_points
 VALUES
 (9001,5001,50,0,50,'2026-06-01'),
 (9002,5002,150,0,150,'2026-06-02'),
 (9003,5003,925,0,925,'2026-06-03'),
 (9004,5004,160,0,160,'2026-06-04'),
 (9005,5005,304,0,304,'2026-06-05');
+
+COMMIT;

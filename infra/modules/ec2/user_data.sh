@@ -100,23 +100,49 @@ echo "Running database initialization..."
 mysql \
   -h "${rds_host}" \
   -u "${db_user}" \
-  -p"${db_password}" < /home/ubuntu/init.sql
+  -p"${db_password}" \
+  --verbose \
+  < /home/ubuntu/init.sql \
+  > /home/ubuntu/init_execution.log 2>&1
 
-#########################################
-# VALIDATE DB INIT
-#########################################
+MYSQL_RC=$?
 
-if [ $? -eq 0 ]; then
-  echo "✅ DB initialized successfully" \
-    | tee /home/ubuntu/db_init.log
-else
-  echo "❌ DB initialization failed" \
-    | tee /home/ubuntu/db_init.log
-  exit 1
+if [ $MYSQL_RC -ne 0 ]; then
+    echo "❌ Database initialization failed"
+    cat /home/ubuntu/init_execution.log
+    exit $MYSQL_RC
 fi
 
+echo "✅ Database initialization completed"
+
 #########################################
-# COMPLETE
+# VERIFY DATA
 #########################################
 
-echo "===== USER DATA SCRIPT COMPLETED SUCCESSFULLY ====="
+echo "Verifying database..."
+
+mysql \
+  -h "${rds_host}" \
+  -u "${db_user}" \
+  -p"${db_password}" \
+<<EOF
+
+USE ${db_name};
+
+SELECT 'cardholders',COUNT(*) FROM cardholders
+UNION ALL
+SELECT 'cards',COUNT(*) FROM cards
+UNION ALL
+SELECT 'merchant_categories',COUNT(*) FROM merchant_categories
+UNION ALL
+SELECT 'transactions',COUNT(*) FROM transactions
+UNION ALL
+SELECT 'offers',COUNT(*) FROM offers
+UNION ALL
+SELECT 'campaigns',COUNT(*) FROM campaigns
+UNION ALL
+SELECT 'reward_points',COUNT(*) FROM reward_points;
+
+EOF
+
+echo "Database verification completed"
