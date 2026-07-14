@@ -93,7 +93,22 @@ jobs:
         echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
 
         chmod 400 bastion-key.pem
+    #########################################
+    # VERIFY PEM FILE
+    #########################################
 
+    - name: Verify PEM File
+      run: |
+
+        ls -l bastion-key.pem
+
+        echo "First line:"
+        head -1 bastion-key.pem
+
+        echo "Last line:"
+        tail -1 bastion-key.pem
+
+        
     #########################################
     # SETUP TERRAFORM
     #########################################
