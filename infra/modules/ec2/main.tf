@@ -26,21 +26,33 @@ resource "aws_instance" "bastion" {
 
       db_name = var.db_name
 
-      init_sql_b64 = base64encode(
+      source_sql_b64 = base64encode(
         templatefile(
-          "${path.module}/init.sql.tpl",
+          "${path.module}/init-source.sql.tpl",
           {
-
             db_name = var.db_name
+          }
+        )
+      )
 
-            raw_db_name = var.raw_db_name
-
+      replicated_sql_b64 = base64encode(
+        templatefile(
+          "${path.module}/init-replicated.sql.tpl",
+          {
             replicated_db_name = var.replicated_db_name
+          }
+        )
+      )
 
+      unified_sql_b64 = base64encode(
+        templatefile(
+          "${path.module}/init-unified.sql.tpl",
+          {
             unified_db_name = var.unified_db_name
           }
         )
       )
+
     }
   )
 
