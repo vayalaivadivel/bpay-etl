@@ -52,3 +52,4 @@ dns_records = {
   airflow = "airflow"
   hop     = "hop"
 }
+private_key_path = "~/.ssh/bpay-etl"

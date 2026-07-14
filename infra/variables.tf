@@ -113,3 +113,7 @@ variable "public_key" {
   type        = string
   default     = ""
 }
+
+variable "private_key_path" {
+  type = string
+}
