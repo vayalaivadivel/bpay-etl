@@ -53,7 +53,7 @@ resource "aws_security_group" "hop_ecs" {
 
     from_port = 8081
 
-    to_port   = 8081
+    to_port = 8081
 
     protocol = "tcp"
 
@@ -224,16 +224,16 @@ resource "aws_ecs_task_definition" "hop" {
 
       essential = true
 
-      "portMappings": [
-          {
-            "containerPort": 8080,
-            "protocol": "tcp"
-          },
-          {
-            "containerPort": 8081,
-            "protocol": "tcp"
-          }
-        ]
+      "portMappings" : [
+        {
+          "containerPort" : 8080,
+          "protocol" : "tcp"
+        },
+        {
+          "containerPort" : 8081,
+          "protocol" : "tcp"
+        }
+      ]
 
       ######################################################
       # CLOUDWATCH LOGS
