@@ -2,8 +2,6 @@
 -- BPAY ETL - REPLICATED DATABASE INITIALIZATION
 -- =============================================================================
 
-CREATE DATABASE IF NOT EXISTS ${replicated_db_name};
-
 USE ${replicated_db_name};
 
 -- =============================================================================

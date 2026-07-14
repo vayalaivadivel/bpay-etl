@@ -2,8 +2,6 @@
 -- BPAY ETL - UNIFIED DATABASE INITIALIZATION
 -- =============================================================================
 
-CREATE DATABASE IF NOT EXISTS ${unified_db_name};
-
 USE ${unified_db_name};
 
 -- =============================================================================
