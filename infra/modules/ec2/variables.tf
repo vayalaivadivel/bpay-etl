@@ -89,18 +89,17 @@ variable "instance_profile_name" {
 # SSH
 #########################################
 
-variable "private_key_path" {
-
-  type = string
-}
-
-
 variable "raw_db_name" {
   type = string
 }
 
 variable "replicated_db_name" {
   type = string
+}
+
+variable "private_key_path" {
+  type        = string
+  description = "SSH private key used for Terraform remote provisioning"
 }
 
 variable "unified_db_name" {

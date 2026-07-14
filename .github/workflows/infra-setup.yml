@@ -170,6 +170,7 @@ jobs:
         terraform plan \
           -parallelism=20 \
           -var-file=environments/${{ github.event.inputs.environment }}.tfvars \
+          -var="private_key_path=bastion-key.pem" \
           -out=tfplan
 
         EXIT_CODE=$?
@@ -197,6 +198,7 @@ jobs:
         terraform apply \
           -parallelism=20 \
           -auto-approve \
+          -var="private_key_path=bastion-key.pem" \
           tfplan
 
     #########################################

@@ -84,7 +84,7 @@ module "ec2" {
   # SSH
   ##########################################################
 
-  private_key_path = "${path.root}/ravula-key.pem"
+  private_key_path = var.private_key_path
 
   depends_on = [
     module.rds
