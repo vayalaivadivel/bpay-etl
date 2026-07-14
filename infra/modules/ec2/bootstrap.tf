@@ -15,14 +15,25 @@ resource "terraform_data" "bootstrap" {
     private_key = file(var.private_key_path)
   }
 
-  provisioner "file" {
+    provisioner "file" {
+    source      = "${path.module}/init-databases.sql.tpl"
+    destination = "/home/ubuntu/init-databases.sql"
+    }
 
-    source = "${path.module}/scripts"
+    provisioner "file" {
+    source      = "${path.module}/init-source.sql.tpl"
+    destination = "/home/ubuntu/init-source.sql"
+    }
 
-    destination = "/home/ubuntu"
+    provisioner "file" {
+    source      = "${path.module}/init-replicated.sql.tpl"
+    destination = "/home/ubuntu/init-replicated.sql"
+    }
 
-  }
-
+    provisioner "file" {
+    source      = "${path.module}/init-unified.sql.tpl"
+    destination = "/home/ubuntu/init-unified.sql"
+    }
   provisioner "remote-exec" {
 
     inline = [
@@ -35,7 +46,7 @@ resource "terraform_data" "bootstrap" {
 
       "echo '===== SQL ====='",
 
-      "ls -lrt /home/ubuntu/sql"
+      "ls -lrt /home/ubuntu/*.sql"
 
     ]
 
