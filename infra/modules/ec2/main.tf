@@ -20,11 +20,25 @@ resource "aws_instance" "bastion" {
 
       rds_host = split(":", var.rds_endpoint)[0]
 
-      db_user = var.db_username
-
+      db_user     = var.db_username
       db_password = var.db_password
 
-      db_name = var.db_name
+      db_name            = var.db_name
+      raw_db_name        = var.raw_db_name
+      replicated_db_name = var.replicated_db_name
+      unified_db_name    = var.unified_db_name
+
+      database_sql_b64 = base64encode(
+        templatefile(
+          "${path.module}/init-databases.sql.tpl",
+          {
+            db_name            = var.db_name
+            raw_db_name        = var.raw_db_name
+            replicated_db_name = var.replicated_db_name
+            unified_db_name    = var.unified_db_name
+          }
+        )
+      )
 
       source_sql_b64 = base64encode(
         templatefile(
