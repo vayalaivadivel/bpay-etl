@@ -2,23 +2,10 @@
 
 set -euo pipefail
 
-#############################################
-# LOAD COMMON FUNCTIONS
-#############################################
-
-source /home/ubuntu/scripts/common.sh
-
-#############################################
-# VERIFY DATABASE
-#############################################
+source /opt/bpay/scripts/common.sh
 
 verify_database
 
-#############################################
-# COMPLETED
-#############################################
-
-echo
 echo "========================================"
 echo "Database verification completed."
 echo "========================================"
