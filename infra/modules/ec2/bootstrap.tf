@@ -21,7 +21,7 @@ resource "terraform_data" "bootstrap" {
 
   provisioner "file" {
     source      = "${path.module}/scripts"
-    destination = "/home/ubuntu"
+    destination = "/opt/bpay"
   }
 
   #############################################
@@ -30,78 +30,51 @@ resource "terraform_data" "bootstrap" {
 
   provisioner "file" {
     source      = "${path.module}/init-databases.sql.tpl"
-    destination = "/home/ubuntu/init-databases.sql"
+    destination = "/opt/bpay/sql/init-databases.sql"
   }
 
   provisioner "file" {
     source      = "${path.module}/init-source.sql.tpl"
-    destination = "/home/ubuntu/init-source.sql"
+    destination = "/opt/bpay/sql/init-source.sql"
   }
 
   provisioner "file" {
     source      = "${path.module}/init-replicated.sql.tpl"
-    destination = "/home/ubuntu/init-replicated.sql"
+    destination = "/opt/bpay/sql/init-replicated.sql"
   }
 
   provisioner "file" {
     source      = "${path.module}/init-unified.sql.tpl"
-    destination = "/home/ubuntu/init-unified.sql"
+    destination = "/opt/bpay/sql/init-unified.sql"
   }
+
+  #############################################
+  # INITIALIZE DATABASE
+  #############################################
 
   provisioner "remote-exec" {
 
     inline = [
       <<-EOT
-  set -ex
+set -e
 
-  echo "STEP-1"
+chmod +x /opt/bpay/scripts/*.sh
 
-  chmod +x /home/ubuntu/scripts/*.sh
+export RDS_HOST="${split(":", var.rds_endpoint)[0]}"
+export DB_USER="${var.db_username}"
+export DB_PASSWORD="${var.db_password}"
+export DB_NAME="${var.db_name}"
+export REPLICATED_DB_NAME="${var.replicated_db_name}"
+export UNIFIED_DB_NAME="${var.unified_db_name}"
 
-  echo "STEP-2"
+echo "Initializing database..."
+bash /opt/bpay/scripts/init-db.sh
 
-  ls -l /home/ubuntu
+echo "Verifying database..."
+bash /opt/bpay/scripts/verify-db.sh
 
-  echo "STEP-3"
-
-  ls -l /home/ubuntu/scripts
-
-  echo "STEP-4"
-
-  ls -l /home/ubuntu/*.sql
-
-  echo "STEP-5"
-
-  export RDS_HOST="${split(":", var.rds_endpoint)[0]}"
-  export DB_USER="${var.db_username}"
-  export DB_PASSWORD="${var.db_password}"
-  export DB_NAME="${var.db_name}"
-  export REPLICATED_DB_NAME="${var.replicated_db_name}"
-  export UNIFIED_DB_NAME="${var.unified_db_name}"
-
-  echo "STEP-6"
-
-  mysql --version
-
-  echo "STEP-7"
-
-  mysql \
-  -h "${split(":", var.rds_endpoint)[0]}" \
-  -u "${var.db_username}" \
-  -p"${var.db_password}" \
-  -e "SELECT 1"
-
-  echo "STEP-8"
-
-  bash -x /home/ubuntu/scripts/init-db.sh
-
-  echo "STEP-9"
-
-  bash -x /home/ubuntu/scripts/verify-db.sh
-
-  echo "DONE"
-
-  EOT
+echo "Bootstrap completed successfully."
+EOT
     ]
   }
 }

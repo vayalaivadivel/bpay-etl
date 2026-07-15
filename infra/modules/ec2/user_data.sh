@@ -4,24 +4,16 @@ set -euo pipefail
 
 exec > >(tee /var/log/user-data.log) 2>&1
 
-echo "=========================================="
+echo "========================================"
 echo "BPAY ETL EC2 BOOTSTRAP"
-echo "=========================================="
+echo "========================================"
 
 apt-get update -y
 
 apt-get install -y mysql-client \
-|| apt-get install -y default-mysql-client \
-|| apt-get install -y mysql-client-core-8.0
+|| apt-get install -y default-mysql-client
 
-chmod +x /opt/bpay/scripts/*.sh
+mkdir -p /opt/bpay/scripts
+mkdir -p /opt/bpay/sql
 
-echo "Starting database initialization..."
-
-/opt/bpay/scripts/init-db.sh
-
-echo "Running verification..."
-
-/opt/bpay/scripts/verify-db.sh
-
-echo "Bootstrap completed."
+echo "EC2 bootstrap completed."
