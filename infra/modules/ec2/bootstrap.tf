@@ -52,31 +52,55 @@ resource "terraform_data" "bootstrap" {
 
     inline = [
       <<-EOT
-set -ex
+  set -ex
 
-chmod +x /home/ubuntu/scripts/*.sh
+  echo "STEP-1"
 
-export RDS_HOST="${split(":", var.rds_endpoint)[0]}"
-export DB_USER="${var.db_username}"
-export DB_PASSWORD="${var.db_password}"
-export DB_NAME="${var.db_name}"
-export REPLICATED_DB_NAME="${var.replicated_db_name}"
-export UNIFIED_DB_NAME="${var.unified_db_name}"
+  chmod +x /home/ubuntu/scripts/*.sh
 
-echo "===== Running Database Initialization ====="
-bash -x /home/ubuntu/scripts/init-db.sh
+  echo "STEP-2"
 
-echo "===== Running Database Verification ====="
-bash -x /home/ubuntu/scripts/verify-db.sh
+  ls -l /home/ubuntu
 
-echo "===== Bootstrap Completed Successfully ====="
-EOT
+  echo "STEP-3"
+
+  ls -l /home/ubuntu/scripts
+
+  echo "STEP-4"
+
+  ls -l /home/ubuntu/*.sql
+
+  echo "STEP-5"
+
+  export RDS_HOST="${split(":", var.rds_endpoint)[0]}"
+  export DB_USER="${var.db_username}"
+  export DB_PASSWORD="${var.db_password}"
+  export DB_NAME="${var.db_name}"
+  export REPLICATED_DB_NAME="${var.replicated_db_name}"
+  export UNIFIED_DB_NAME="${var.unified_db_name}"
+
+  echo "STEP-6"
+
+  mysql --version
+
+  echo "STEP-7"
+
+  mysql \
+  -h "${split(":", var.rds_endpoint)[0]}" \
+  -u "${var.db_username}" \
+  -p"${var.db_password}" \
+  -e "SELECT 1"
+
+  echo "STEP-8"
+
+  bash -x /home/ubuntu/scripts/init-db.sh
+
+  echo "STEP-9"
+
+  bash -x /home/ubuntu/scripts/verify-db.sh
+
+  echo "DONE"
+
+  EOT
     ]
   }
-
-  #############################################
-  # INITIALIZE DATABASE
-  #############################################
-
-
-}
