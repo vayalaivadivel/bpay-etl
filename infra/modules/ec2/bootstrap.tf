@@ -48,38 +48,35 @@ resource "terraform_data" "bootstrap" {
     destination = "/home/ubuntu/init-unified.sql"
   }
 
-  provisioner "file" {
-    content = templatefile("${path.module}/bpay.env.tpl", {
-      rds_host           = split(":", var.rds_endpoint)[0]
-      db_user            = var.db_username
-      db_password        = var.db_password
-      db_name            = var.db_name
-      replicated_db_name = var.replicated_db_name
-      unified_db_name    = var.unified_db_name
-    })
+  provisioner "remote-exec" {
 
-    destination = "/home/ubuntu/bpay.env"
+    inline = [
+      <<-EOT
+set -ex
+
+chmod +x /home/ubuntu/scripts/*.sh
+
+export RDS_HOST="${split(":", var.rds_endpoint)[0]}"
+export DB_USER="${var.db_username}"
+export DB_PASSWORD="${var.db_password}"
+export DB_NAME="${var.db_name}"
+export REPLICATED_DB_NAME="${var.replicated_db_name}"
+export UNIFIED_DB_NAME="${var.unified_db_name}"
+
+echo "===== Running Database Initialization ====="
+bash -x /home/ubuntu/scripts/init-db.sh
+
+echo "===== Running Database Verification ====="
+bash -x /home/ubuntu/scripts/verify-db.sh
+
+echo "===== Bootstrap Completed Successfully ====="
+EOT
+    ]
   }
 
   #############################################
   # INITIALIZE DATABASE
   #############################################
 
-  provisioner "remote-exec" {
 
-    inline = [
-
-      "chmod +x /home/ubuntu/scripts/*.sh",
-
-      "export RDS_HOST='${split(":", var.rds_endpoint)[0]}'",
-      "export DB_USER='${var.db_username}'",
-      "export DB_PASSWORD='${var.db_password}'",
-      "export DB_NAME='${var.db_name}'",
-
-      "/home/ubuntu/scripts/init-db.sh",
-
-      "/home/ubuntu/scripts/verify-db.sh"
-
-    ]
-  }
 }
