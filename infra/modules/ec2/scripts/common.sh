@@ -6,7 +6,7 @@ set -euo pipefail
 # LOAD CONFIGURATION
 #############################################
 
-source /home/ubuntu/bpay.env
+#source /home/ubuntu/bpay.env
 
 #############################################
 # WAIT FOR RDS
