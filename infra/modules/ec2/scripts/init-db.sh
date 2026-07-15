@@ -6,7 +6,7 @@ set -euo pipefail
 # LOAD COMMON FUNCTIONS
 #############################################
 
-source /home/ubuntu/scripts/common.sh
+source /opt/bpay/scripts/common.sh
 
 #############################################
 # WAIT FOR RDS
@@ -18,29 +18,25 @@ wait_for_rds
 # INITIALIZE DATABASES
 #############################################
 
-run_sql /home/ubuntu/init-databases.sql
+run_sql /opt/bpay/sql/init-databases.sql
 
 #############################################
 # INITIALIZE SOURCE DATABASE
 #############################################
 
-run_sql /home/ubuntu/init-source.sql
+run_sql /opt/bpay/sql/init-source.sql
 
 #############################################
 # INITIALIZE REPLICATED DATABASE
 #############################################
 
-run_sql /home/ubuntu/init-replicated.sql
+run_sql /opt/bpay/sql/init-replicated.sql
 
 #############################################
 # INITIALIZE UNIFIED DATABASE
 #############################################
 
-run_sql /home/ubuntu/init-unified.sql
-
-#############################################
-# COMPLETED
-#############################################
+run_sql /opt/bpay/sql/init-unified.sql
 
 echo
 echo "========================================"
