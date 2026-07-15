@@ -2,16 +2,47 @@
 
 set -euo pipefail
 
-source /opt/bpay/scripts/common.sh
+#############################################
+# LOAD COMMON FUNCTIONS
+#############################################
+
+source /home/ubuntu/scripts/common.sh
+
+#############################################
+# WAIT FOR RDS
+#############################################
 
 wait_for_rds
 
-run_sql /opt/bpay/sql/init-databases.sql
+#############################################
+# INITIALIZE DATABASES
+#############################################
 
-run_sql /opt/bpay/sql/init-source.sql
+run_sql /home/ubuntu/init-databases.sql
 
-run_sql /opt/bpay/sql/init-replicated.sql
+#############################################
+# INITIALIZE SOURCE DATABASE
+#############################################
 
-run_sql /opt/bpay/sql/init-unified.sql
+run_sql /home/ubuntu/init-source.sql
 
+#############################################
+# INITIALIZE REPLICATED DATABASE
+#############################################
+
+run_sql /home/ubuntu/init-replicated.sql
+
+#############################################
+# INITIALIZE UNIFIED DATABASE
+#############################################
+
+run_sql /home/ubuntu/init-unified.sql
+
+#############################################
+# COMPLETED
+#############################################
+
+echo
+echo "========================================"
 echo "Database initialization completed."
+echo "========================================"
