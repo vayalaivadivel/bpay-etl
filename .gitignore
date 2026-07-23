@@ -91,3 +91,5 @@ node_modules/
 
 # OS files
 .DS_Store
+
+infra/modules/ec2/rendered/

@@ -14,58 +14,17 @@ resource "aws_instance" "bastion" {
 
   key_name = var.key_name
 
-  user_data = templatefile(
-    "${path.module}/user_data.sh",
-    {
+  user_data = templatefile("${path.module}/user_data.sh", {
 
-      rds_host = split(":", var.rds_endpoint)[0]
+    rds_host = split(":", var.rds_endpoint)[0]
 
-      db_user     = var.db_username
-      db_password = var.db_password
+    db_user     = var.db_username
+    db_password = var.db_password
 
-      db_name            = var.db_name
-      raw_db_name        = var.raw_db_name
-      replicated_db_name = var.replicated_db_name
-      unified_db_name    = var.unified_db_name
-
-      database_sql_b64 = base64encode(
-        templatefile(
-          "${path.module}/init-databases.sql.tpl",
-          {
-            db_name            = var.db_name
-            raw_db_name        = var.raw_db_name
-            replicated_db_name = var.replicated_db_name
-            unified_db_name    = var.unified_db_name
-          }
-        )
-      )
-
-      source_sql_b64 = base64encode(
-        templatefile(
-          "${path.module}/init-source.sql.tpl",
-          {
-            db_name = var.db_name
-          }
-        )
-      )
-
-      replicated_sql_b64 = base64encode(
-        templatefile(
-          "${path.module}/init-replicated.sql.tpl",
-          {
-            replicated_db_name = var.replicated_db_name
-          }
-        )
-      )
-
-      unified_sql_b64 = base64encode(
-        templatefile(
-          "${path.module}/init-unified.sql.tpl",
-          {
-            unified_db_name = var.unified_db_name
-          }
-        )
-      )
+    db_name            = var.db_name
+    raw_db_name        = var.raw_db_name
+    replicated_db_name = var.replicated_db_name
+    unified_db_name    = var.unified_db_name
 
     }
   )

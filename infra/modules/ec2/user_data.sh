@@ -11,9 +11,10 @@ echo "========================================"
 apt-get update -y
 
 apt-get install -y mysql-client \
-|| apt-get install -y default-mysql-client
+|| apt-get install -y default-mysql-client \
+|| apt-get install -y mysql-client-core-8.0
 
 mkdir -p /opt/bpay/scripts
 mkdir -p /opt/bpay/sql
 
-echo "EC2 bootstrap completed."
+echo "Bootstrap completed."
