@@ -203,6 +203,10 @@ jobs:
 
         echo "✅ Terraform plan successful"
 
+    - name: Verify rendered SQL
+      run: |
+        ls -R infra/.terraform-rendered || true
+
     #########################################
     # TERRAFORM APPLY
     #########################################
