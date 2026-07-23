@@ -43,37 +43,44 @@ resource "null_resource" "bootstrap" {
 
   provisioner "remote-exec" {
     inline = [
-      "set -euxo pipefail",
-
-      "echo '===== HOME ====='",
-      "pwd",
-
-      "echo '===== /home/ubuntu ====='",
-      "ls -al /home/ubuntu",
-
-      "echo '===== /home/ubuntu/scripts ====='",
-      "ls -al /home/ubuntu/scripts",
-
-      "echo '===== /home/ubuntu/ec2 ====='",
-      "ls -al /home/ubuntu/ec2",
-
       "sudo mkdir -p /opt/bpay/scripts",
       "sudo mkdir -p /opt/bpay/sql",
 
-      "sudo cp -rv /home/ubuntu/scripts/* /opt/bpay/scripts/",
-      "sudo cp -rv /home/ubuntu/ec2/* /opt/bpay/sql/",
+      "sudo cp -r /home/ubuntu/scripts/* /opt/bpay/scripts/",
+      "sudo cp -r /home/ubuntu/ec2/* /opt/bpay/sql/",
 
-      "echo '===== /opt/bpay/sql ====='",
-      "ls -al /opt/bpay/sql",
+      "sudo chmod +x /opt/bpay/scripts/*.sh",
 
-      "echo '===== init-db ====='",
+      "echo '===== Scripts ====='",
+      "ls -lrt /opt/bpay/scripts",
+
+      "echo '===== SQL ====='",
+      "ls -lrt /opt/bpay/sql",
+
+      # Export environment variables
+      "export RDS_HOST=${split(":", var.rds_endpoint)[0]}",
+      "export DB_USER=${var.db_username}",
+      "export DB_PASSWORD='${var.db_password}'",
+      "export DB_NAME=${var.db_name}",
+
+      "echo RDS_HOST=$RDS_HOST",
+      "echo DB_USER=$DB_USER",
+      "echo DB_NAME=$DB_NAME",
+
       "bash -x /opt/bpay/scripts/init-db.sh",
+      "bash -x /opt/bpay/scripts/verify-db.sh",
 
-      "echo '===== verify-db ====='",
-      "bash -x /opt/bpay/scripts/verify-db.sh"
+      "echo '===== Scripts ====='",
+      "ls -lrt /opt/bpay/scripts",
+
+      "echo '===== SQL ====='",
+      "ls -lrt /opt/bpay/sql",
+
+      "RDS_HOST='${split(":", var.rds_endpoint)[0]}' DB_USER='${var.db_username}' DB_PASSWORD='${var.db_password}' DB_NAME='${var.db_name}' bash -x /opt/bpay/scripts/init-db.sh",
+
+      "RDS_HOST='${split(":", var.rds_endpoint)[0]}' DB_USER='${var.db_username}' DB_PASSWORD='${var.db_password}' DB_NAME='${var.db_name}' bash -x /opt/bpay/scripts/verify-db.sh"
     ]
   }
-
 
 
 }
