@@ -1,12 +1,12 @@
-resource "terraform_data" "bootstrap" {
+resource "null_resource" "bootstrap" {
 
   depends_on = [
     aws_instance.bastion
   ]
 
-  triggers_replace = [
-    aws_instance.bastion.id
-  ]
+  triggers = {
+    bastion_id = aws_instance.bastion.id
+  }
 
   connection {
     type        = "ssh"
@@ -27,25 +27,9 @@ resource "terraform_data" "bootstrap" {
   #############################################
   # COPY SQL FILES
   #############################################
-
   provisioner "file" {
-    source      = "${path.module}/init-databases.sql.tpl"
-    destination = "/home/ubuntu/init-databases.sql"
-  }
-
-  provisioner "file" {
-    source      = "${path.module}/init-source.sql.tpl"
-    destination = "/home/ubuntu/init-source.sql"
-  }
-
-  provisioner "file" {
-    source      = "${path.module}/init-replicated.sql.tpl"
-    destination = "/home/ubuntu/init-replicated.sql"
-  }
-
-  provisioner "file" {
-    source      = "${path.module}/init-unified.sql.tpl"
-    destination = "/home/ubuntu/init-unified.sql"
+    source      = "${path.module}/rendered"
+    destination = "/home/ubuntu"
   }
 
   #############################################
@@ -55,11 +39,17 @@ resource "terraform_data" "bootstrap" {
     inline = [
       "sudo mkdir -p /opt/bpay/scripts",
       "sudo mkdir -p /opt/bpay/sql",
+
       "sudo cp -r /home/ubuntu/scripts/* /opt/bpay/scripts/",
-      "sudo cp /home/ubuntu/init-*.sql /opt/bpay/sql/",
+      "sudo cp -r /home/ubuntu/rendered/* /opt/bpay/sql/",
+
       "sudo chmod +x /opt/bpay/scripts/*.sh",
+
       "ls -lrt /opt/bpay/scripts",
-      "ls -lrt /opt/bpay/sql"
+      "ls -lrt /opt/bpay/sql",
+
+      "bash /opt/bpay/scripts/init-db.sh",
+      "bash /opt/bpay/scripts/verify-db.sh"
     ]
   }
-} 
+}
