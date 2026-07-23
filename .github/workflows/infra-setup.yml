@@ -150,6 +150,8 @@ jobs:
     #########################################
     # TERRAFORM INIT
     #########################################
+    - name: Create rendered SQL directory
+      run: mkdir -p infra/.terraform-rendered/ec2
 
     - name: Terraform Init
       run: |
