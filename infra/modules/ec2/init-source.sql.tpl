@@ -69,40 +69,9 @@ CREATE TABLE IF NOT EXISTS merchant_categories (
 
 );
 
--- =============================================================================
--- 4. TRANSACTIONS
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS transactions (
-
-    transaction_id INT PRIMARY KEY,
-
-    card_id INT NOT NULL,
-
-    category_id INT NOT NULL,
-
-    merchant_name VARCHAR(100),
-
-    transaction_amount DECIMAL(12,2),
-
-    currency VARCHAR(10),
-
-    transaction_date DATE,
-
-    transaction_status VARCHAR(20),
-
-    CONSTRAINT fk_transactions_card
-        FOREIGN KEY (card_id)
-        REFERENCES cards(card_id),
-
-    CONSTRAINT fk_transactions_category
-        FOREIGN KEY (category_id)
-        REFERENCES merchant_categories(category_id)
-
-);
 
 -- =============================================================================
--- 5. OFFERS
+-- 4. OFFERS
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS offers (
@@ -126,7 +95,7 @@ CREATE TABLE IF NOT EXISTS offers (
 );
 
 -- =============================================================================
--- 6. CAMPAIGNS
+-- 5. CAMPAIGNS
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -144,6 +113,51 @@ CREATE TABLE IF NOT EXISTS campaigns (
     campaign_status VARCHAR(20)
 
 );
+
+-- =============================================================================
+-- 6. TRANSACTIONS
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS transactions (
+
+    transaction_id INT PRIMARY KEY,
+
+    card_id INT NOT NULL,
+
+    category_id INT NOT NULL,
+
+    offer_id INT NULL,
+    
+    campaign_id INT NULL
+
+    merchant_name VARCHAR(100),
+
+    transaction_amount DECIMAL(12,2),
+
+    currency VARCHAR(10),
+
+    transaction_date DATE,
+
+    transaction_status VARCHAR(20),
+
+    CONSTRAINT fk_transactions_card
+        FOREIGN KEY (card_id)
+        REFERENCES cards(card_id),
+
+    CONSTRAINT fk_transactions_category
+        FOREIGN KEY (category_id)
+        REFERENCES merchant_categories(category_id)
+
+    CONSTRAINT fk_transactions_offers
+        FOREIGN KEY (offer_id)
+        REFERENCES offers(offer_id)
+
+    CONSTRAINT fk_transactions_campaigns
+        FOREIGN KEY (campaign_id)
+        REFERENCES campaigns(campaign_id)
+
+);
+
 
 -- =============================================================================
 -- 7. REWARD POINTS

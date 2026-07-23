@@ -77,6 +77,8 @@
     transaction_id,
     card_id,
     category_id,
+    offer_id,
+    campaign_id,
     merchant_name,
     transaction_amount,
     currency,

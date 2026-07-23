@@ -1,16 +1,21 @@
 -- =============================================================================
--- BPAY ETL - UNIFIED DATABASE INITIALIZATION
+-- BPAY ETL - UNIFIED DATA WAREHOUSE INITIALIZATION
+-- Gold Layer (Star Schema)
 -- =============================================================================
 
 USE ${unified_db_name};
 
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- =============================================================================
--- 1. CARDHOLDERS
+-- DIMENSION : CUSTOMER
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS cardholders (
+CREATE TABLE IF NOT EXISTS dim_customer (
 
-    cardholder_id INT PRIMARY KEY,
+    customer_key BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    cardholder_id INT NOT NULL,
 
     customer_name VARCHAR(100),
 
@@ -24,19 +29,29 @@ CREATE TABLE IF NOT EXISTS cardholders (
 
     loyalty_tier VARCHAR(20),
 
-    created_date TIMESTAMP NULL
+    created_date TIMESTAMP,
+
+    effective_from DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    effective_to DATETIME DEFAULT '9999-12-31 23:59:59',
+
+    current_flag CHAR(1) DEFAULT 'Y',
+
+    UNIQUE(cardholder_id)
 
 );
 
 -- =============================================================================
--- 2. CARDS
+-- DIMENSION : CARD
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS cards (
+CREATE TABLE IF NOT EXISTS dim_card (
 
-    card_id INT PRIMARY KEY,
+    card_key BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-    cardholder_id INT NOT NULL,
+    card_id INT NOT NULL,
+
+    customer_key BIGINT NOT NULL,
 
     card_number VARCHAR(20),
 
@@ -50,53 +65,43 @@ CREATE TABLE IF NOT EXISTS cards (
 
     issue_date DATE,
 
-    CONSTRAINT fk_unified_cards_cardholder
-        FOREIGN KEY (cardholder_id)
-        REFERENCES cardholders(cardholder_id)
+    UNIQUE(card_id),
+
+    CONSTRAINT fk_dim_card_customer
+        FOREIGN KEY(customer_key)
+        REFERENCES dim_customer(customer_key)
 
 );
 
 -- =============================================================================
--- 3. MERCHANT CATEGORIES
+-- DIMENSION : MERCHANT
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS merchant_categories (
+CREATE TABLE IF NOT EXISTS dim_merchant (
 
-    category_id INT PRIMARY KEY,
+    merchant_key BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    merchant_name VARCHAR(100),
+
+    category_id INT,
 
     category_name VARCHAR(100),
 
-    reward_multiplier DECIMAL(5,2)
+    reward_multiplier DECIMAL(5,2),
+
+    UNIQUE(merchant_name)
 
 );
 
 -- =============================================================================
--- 4. CAMPAIGNS
+-- DIMENSION : OFFER
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS campaigns (
+CREATE TABLE IF NOT EXISTS dim_offer (
 
-    campaign_id INT PRIMARY KEY,
+    offer_key BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-    campaign_name VARCHAR(100),
-
-    campaign_type VARCHAR(50),
-
-    start_date DATE,
-
-    end_date DATE,
-
-    campaign_status VARCHAR(20)
-
-);
-
--- =============================================================================
--- 5. OFFERS
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS offers (
-
-    offer_id INT PRIMARY KEY,
+    offer_id INT NOT NULL,
 
     merchant_name VARCHAR(100),
 
@@ -110,51 +115,87 @@ CREATE TABLE IF NOT EXISTS offers (
 
     end_date DATE,
 
-    offer_status VARCHAR(20)
+    offer_status VARCHAR(20),
+
+    UNIQUE(offer_id)
 
 );
 
 -- =============================================================================
--- 6. TRANSACTIONS
+-- DIMENSION : CAMPAIGN
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS transactions (
+CREATE TABLE IF NOT EXISTS dim_campaign (
 
-    transaction_id INT PRIMARY KEY,
+    campaign_key BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-    card_id INT NOT NULL,
+    campaign_id INT NOT NULL,
 
-    category_id INT NOT NULL,
+    campaign_name VARCHAR(100),
 
-    merchant_name VARCHAR(100),
+    campaign_type VARCHAR(50),
+
+    start_date DATE,
+
+    end_date DATE,
+
+    campaign_status VARCHAR(20),
+
+    UNIQUE(campaign_id)
+
+);
+
+-- =============================================================================
+-- DIMENSION : DATE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS dim_date (
+
+    date_key INT PRIMARY KEY,
+
+    full_date DATE,
+
+    day_number INT,
+
+    month_number INT,
+
+    month_name VARCHAR(20),
+
+    quarter_number INT,
+
+    year_number INT,
+
+    weekday_name VARCHAR(20),
+
+    weekend_flag CHAR(1)
+
+);
+
+-- =============================================================================
+-- FACT : REWARD TRANSACTION
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS fact_reward_transaction (
+
+    reward_transaction_key BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    transaction_id INT,
+
+    date_key INT,
+
+    customer_key BIGINT,
+
+    card_key BIGINT,
+
+    merchant_key BIGINT,
+
+    offer_key BIGINT NULL,
+
+    campaign_key BIGINT NULL,
 
     transaction_amount DECIMAL(12,2),
 
     currency VARCHAR(10),
-
-    transaction_date DATE,
-
-    transaction_status VARCHAR(20),
-
-    CONSTRAINT fk_unified_transactions_card
-        FOREIGN KEY (card_id)
-        REFERENCES cards(card_id),
-
-    CONSTRAINT fk_unified_transactions_category
-        FOREIGN KEY (category_id)
-        REFERENCES merchant_categories(category_id)
-
-);
-
--- =============================================================================
--- 7. REWARD POINTS
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS reward_points (
-
-    reward_id INT PRIMARY KEY,
-
-    transaction_id INT NOT NULL,
 
     earned_points INT,
 
@@ -162,14 +203,96 @@ CREATE TABLE IF NOT EXISTS reward_points (
 
     available_points INT,
 
-    processed_date DATE,
+    transaction_status VARCHAR(20),
 
-    CONSTRAINT fk_unified_reward_transaction
-        FOREIGN KEY (transaction_id)
-        REFERENCES transactions(transaction_id)
+    load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_fact_date
+        FOREIGN KEY(date_key)
+        REFERENCES dim_date(date_key),
+
+    CONSTRAINT fk_fact_customer
+        FOREIGN KEY(customer_key)
+        REFERENCES dim_customer(customer_key),
+
+    CONSTRAINT fk_fact_card
+        FOREIGN KEY(card_key)
+        REFERENCES dim_card(card_key),
+
+    CONSTRAINT fk_fact_merchant
+        FOREIGN KEY(merchant_key)
+        REFERENCES dim_merchant(merchant_key),
+
+    CONSTRAINT fk_fact_offer
+        FOREIGN KEY(offer_key)
+        REFERENCES dim_offer(offer_key),
+
+    CONSTRAINT fk_fact_campaign
+        FOREIGN KEY(campaign_key)
+        REFERENCES dim_campaign(campaign_key)
 
 );
 
 -- =============================================================================
--- END OF UNIFIED DATABASE
+-- FACT : CUSTOMER REWARD BALANCE
 -- =============================================================================
+
+CREATE TABLE IF NOT EXISTS fact_reward_balance (
+
+    balance_key BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    customer_key BIGINT,
+
+    date_key INT,
+
+    earned_points INT,
+
+    redeemed_points INT,
+
+    available_points INT,
+
+    load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_balance_customer
+        FOREIGN KEY(customer_key)
+        REFERENCES dim_customer(customer_key),
+
+    CONSTRAINT fk_balance_date
+        FOREIGN KEY(date_key)
+        REFERENCES dim_date(date_key)
+
+);
+
+-- =============================================================================
+-- FACT : CAMPAIGN PERFORMANCE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS fact_campaign_performance (
+
+    performance_key BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    campaign_key BIGINT,
+
+    date_key INT,
+
+    transaction_count INT,
+
+    total_sales DECIMAL(12,2),
+
+    reward_points INT,
+
+    participating_customers INT,
+
+    load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_campaign_perf_campaign
+        FOREIGN KEY(campaign_key)
+        REFERENCES dim_campaign(campaign_key),
+
+    CONSTRAINT fk_campaign_perf_date
+        FOREIGN KEY(date_key)
+        REFERENCES dim_date(date_key)
+
+);
+
+SET FOREIGN_KEY_CHECKS = 1;
