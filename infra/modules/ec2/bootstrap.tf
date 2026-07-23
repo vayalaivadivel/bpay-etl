@@ -48,29 +48,32 @@ resource "null_resource" "bootstrap" {
       "echo '===== HOME ====='",
       "pwd",
 
-      "echo '===== HOME UBUNTU ====='",
+      "echo '===== /home/ubuntu ====='",
       "ls -al /home/ubuntu",
 
-      "echo '===== EC2 DIRECTORY ====='",
-      "ls -al /home/ubuntu/ec2 || true",
-
-      "echo '===== SCRIPTS ====='",
+      "echo '===== /home/ubuntu/scripts ====='",
       "ls -al /home/ubuntu/scripts",
+
+      "echo '===== /home/ubuntu/ec2 ====='",
+      "ls -al /home/ubuntu/ec2",
 
       "sudo mkdir -p /opt/bpay/scripts",
       "sudo mkdir -p /opt/bpay/sql",
 
-      "sudo cp -r /home/ubuntu/scripts/* /opt/bpay/scripts/",
-      "sudo cp -r /home/ubuntu/ec2/* /opt/bpay/sql/",
+      "sudo cp -rv /home/ubuntu/scripts/* /opt/bpay/scripts/",
+      "sudo cp -rv /home/ubuntu/ec2/* /opt/bpay/sql/",
 
-      "echo '===== OPT SQL ====='",
+      "echo '===== /opt/bpay/sql ====='",
       "ls -al /opt/bpay/sql",
 
-      "echo '===== RUN INIT ====='",
+      "echo '===== init-db ====='",
       "bash -x /opt/bpay/scripts/init-db.sh",
 
-      "echo '===== VERIFY ====='",
+      "echo '===== verify-db ====='",
       "bash -x /opt/bpay/scripts/verify-db.sh"
     ]
   }
+
+
+
 }
