@@ -43,23 +43,34 @@ resource "null_resource" "bootstrap" {
 
   provisioner "remote-exec" {
     inline = [
+      "set -euxo pipefail",
+
+      "echo '===== HOME ====='",
+      "pwd",
+
+      "echo '===== HOME UBUNTU ====='",
+      "ls -al /home/ubuntu",
+
+      "echo '===== EC2 DIRECTORY ====='",
+      "ls -al /home/ubuntu/ec2 || true",
+
+      "echo '===== SCRIPTS ====='",
+      "ls -al /home/ubuntu/scripts",
+
       "sudo mkdir -p /opt/bpay/scripts",
       "sudo mkdir -p /opt/bpay/sql",
 
       "sudo cp -r /home/ubuntu/scripts/* /opt/bpay/scripts/",
       "sudo cp -r /home/ubuntu/ec2/* /opt/bpay/sql/",
 
-      "sudo chmod +x /opt/bpay/scripts/*.sh",
+      "echo '===== OPT SQL ====='",
+      "ls -al /opt/bpay/sql",
 
-      "echo '===== Scripts ====='",
-      "ls -lrt /opt/bpay/scripts",
+      "echo '===== RUN INIT ====='",
+      "bash -x /opt/bpay/scripts/init-db.sh",
 
-      "echo '===== SQL Files ====='",
-      "ls -lrt /opt/bpay/sql",
-
-      "bash /opt/bpay/scripts/init-db.sh",
-
-      "bash /opt/bpay/scripts/verify-db.sh"
+      "echo '===== VERIFY ====='",
+      "bash -x /opt/bpay/scripts/verify-db.sh"
     ]
   }
 }
