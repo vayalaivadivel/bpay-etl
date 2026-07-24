@@ -24,7 +24,22 @@ run_sql /opt/bpay/sql/init-databases.sql
 # INITIALIZE SOURCE DATABASE
 #############################################
 
-run_sql /opt/bpay/sql/init-source.sql
+run_sql() {
+    local sql_file="$1"
+
+    echo
+    echo "======================================="
+    echo "Executing: $sql_file"
+    echo "======================================="
+
+    mysql \
+      -h "$RDS_HOST" \
+      -u "$DB_USER" \
+      -p"$DB_PASSWORD" \
+      < "$sql_file"
+
+    echo "Completed: $sql_file"
+}
 
 #############################################
 # INITIALIZE REPLICATED DATABASE

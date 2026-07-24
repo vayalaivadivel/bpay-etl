@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     offer_id INT NULL,
     
-    campaign_id INT NULL
+    campaign_id INT NULL,
 
     merchant_name VARCHAR(100),
 
@@ -146,11 +146,11 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     CONSTRAINT fk_transactions_category
         FOREIGN KEY (category_id)
-        REFERENCES merchant_categories(category_id)
+        REFERENCES merchant_categories(category_id),
 
     CONSTRAINT fk_transactions_offers
         FOREIGN KEY (offer_id)
-        REFERENCES offers(offer_id)
+        REFERENCES offers(offer_id),
 
     CONSTRAINT fk_transactions_campaigns
         FOREIGN KEY (campaign_id)
@@ -219,17 +219,6 @@ INSERT IGNORE INTO merchant_categories VALUES
 (5,'Shopping',4.00);
 
 -- =============================================================================
--- TRANSACTIONS
--- =============================================================================
-
-INSERT IGNORE INTO transactions VALUES
-(5001,1001,1,'Indian Oil',2500,'INR','2026-06-01','SUCCESS'),
-(5002,1002,2,'DMart',5200,'INR','2026-06-02','SUCCESS'),
-(5003,1003,4,'IndiGo',18500,'INR','2026-06-03','SUCCESS'),
-(5004,1004,3,'Barbeque Nation',3200,'INR','2026-06-04','SUCCESS'),
-(5005,1005,5,'Amazon',7600,'INR','2026-06-05','SUCCESS');
-
--- =============================================================================
 -- OFFERS
 -- =============================================================================
 
@@ -245,6 +234,19 @@ INSERT IGNORE INTO offers VALUES
 INSERT IGNORE INTO campaigns VALUES
 (1,'Summer Rewards','Cashback','2026-06-01','2026-08-31','ACTIVE'),
 (2,'Travel Bonanza','Travel','2026-06-01','2026-09-30','ACTIVE');
+
+
+-- =============================================================================
+-- TRANSACTIONS
+-- =============================================================================
+
+INSERT IGNORE INTO transactions VALUES
+(5001,1001,1,3,1,'Indian Oil',2500,'INR','2026-06-01','SUCCESS'),
+(5002,1002,2,2,1,'DMart',5200,'INR','2026-06-02','SUCCESS'),
+(5003,1003,4,NULL,2,'IndiGo',18500,'INR','2026-06-03','SUCCESS'),
+(5004,1004,3,NULL,NULL,'Barbeque Nation',3200,'INR','2026-06-04','SUCCESS'),
+(5005,1005,5,1,NULL,'Amazon',7600,'INR','2026-06-05','SUCCESS');
+
 
 -- =============================================================================
 -- REWARD POINTS
