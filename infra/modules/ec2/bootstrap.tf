@@ -67,6 +67,7 @@ resource "null_resource" "bootstrap" {
       "echo DB_USER=$DB_USER",
       "echo DB_NAME=$DB_NAME",
 
+      "set -euxo pipefail",
       "bash -x /opt/bpay/scripts/init-db.sh",
       "bash -x /opt/bpay/scripts/verify-db.sh",
 
