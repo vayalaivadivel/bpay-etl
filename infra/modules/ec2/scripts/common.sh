@@ -3,17 +3,12 @@
 set -euo pipefail
 
 #############################################
-# LOAD CONFIGURATION
-#############################################
-
-#source /home/ubuntu/bpay.env
-
-#############################################
 # WAIT FOR RDS
 #############################################
 
 wait_for_rds() {
 
+    echo
     echo "========================================"
     echo "Waiting for RDS..."
     echo "========================================"
@@ -32,29 +27,32 @@ wait_for_rds() {
 }
 
 #############################################
-# EXECUTE SQL FILE
+# EXECUTE SQL
 #############################################
 
 run_sql() {
 
-    local FILE=$1
+    local FILE="$1"
 
     echo
     echo "========================================"
-    echo "Executing SQL : ${FILE}"
+    echo "Executing : ${FILE}"
     echo "========================================"
 
     mysql \
+        -vvv \
         -h "${RDS_HOST}" \
         -u "${DB_USER}" \
         -p"${DB_PASSWORD}" \
         < "${FILE}"
 
-    RC=$?
+    local RC=$?
 
-    if [ $RC -ne 0 ]; then
-        echo "ERROR : Failed executing ${FILE}"
-        exit $RC
+    echo "Exit Code : ${RC}"
+
+    if [ ${RC} -ne 0 ]; then
+        echo "FAILED : ${FILE}"
+        exit ${RC}
     fi
 
     echo "SUCCESS : ${FILE}"
@@ -68,7 +66,7 @@ verify_database() {
 
     echo
     echo "========================================"
-    echo "Verifying database..."
+    echo "Verifying ${DB_NAME}"
     echo "========================================"
 
     mysql \
@@ -93,13 +91,6 @@ UNION ALL
 SELECT 'reward_points',COUNT(*) FROM reward_points;
 
 EOF
-
-    RC=$?
-
-    if [ $RC -ne 0 ]; then
-        echo "ERROR : Database verification failed."
-        exit $RC
-    fi
 
     echo
     echo "========================================"
