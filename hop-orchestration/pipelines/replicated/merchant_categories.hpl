@@ -42,9 +42,10 @@
     <limit>0</limit>
     <sql>SELECT
     category_id,
-    category_name,
+    TRIM(category_name) AS category_name,
     reward_multiplier
-FROM merchant_categories;</sql>
+FROM merchant_categories
+ORDER BY category_id;</sql>
     <variables_active>N</variables_active>
     <attributes/>
     <GUI>
@@ -55,7 +56,13 @@ FROM merchant_categories;</sql>
   <transform>
     <name>merchant_categories</name>
     <type>TableOutput</type>
-    <description>merchant_categories</description>
+    <description>
+      Loads merchant category reference data from Bronze (MYSQL_RAW) to Silver (MYSQL_REPLICATED).
+Business Rules:
+- Trim category name
+- Preserve reward multiplier
+- Full refresh
+  </description>
     <distribute>Y</distribute>
     <custom_distribution/>
     <copies>1</copies>
