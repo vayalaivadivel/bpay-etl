@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS dim_customer (
 
     current_flag CHAR(1) DEFAULT 'Y',
 
-    UNIQUE(cardholder_id)
+    UNIQUE(cardholder_id),
+
+    INDEX idx_dim_customer_tier (loyalty_tier),
+
+    INDEX idx_dim_customer_current (current_flag)
 
 );
 
@@ -67,6 +71,10 @@ CREATE TABLE IF NOT EXISTS dim_card (
 
     UNIQUE(card_id),
 
+    INDEX idx_dim_card_customer (customer_key),
+
+    INDEX idx_dim_card_status (card_status),
+
     CONSTRAINT fk_dim_card_customer
         FOREIGN KEY(customer_key)
         REFERENCES dim_customer(customer_key)
@@ -89,7 +97,9 @@ CREATE TABLE IF NOT EXISTS dim_merchant (
 
     reward_multiplier DECIMAL(5,2),
 
-    UNIQUE(merchant_name)
+    UNIQUE(merchant_name),
+
+    INDEX idx_dim_merchant_category (category_id)
 
 );
 
@@ -117,7 +127,11 @@ CREATE TABLE IF NOT EXISTS dim_offer (
 
     offer_status VARCHAR(20),
 
-    UNIQUE(offer_id)
+    UNIQUE(offer_id),
+
+    INDEX idx_dim_offer_status (offer_status),
+
+    INDEX idx_dim_offer_dates (start_date, end_date)
 
 );
 
@@ -141,7 +155,11 @@ CREATE TABLE IF NOT EXISTS dim_campaign (
 
     campaign_status VARCHAR(20),
 
-    UNIQUE(campaign_id)
+    UNIQUE(campaign_id),
+
+    INDEX idx_dim_campaign_status (campaign_status),
+
+    INDEX idx_dim_campaign_dates (start_date, end_date)
 
 );
 
@@ -167,7 +185,13 @@ CREATE TABLE IF NOT EXISTS dim_date (
 
     weekday_name VARCHAR(20),
 
-    weekend_flag CHAR(1)
+    weekend_flag CHAR(1),
+
+    INDEX idx_dim_date_year (year_number),
+
+    INDEX idx_dim_date_month (month_number),
+
+    INDEX idx_dim_date_quarter (quarter_number)
 
 );
 
@@ -181,6 +205,10 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
 
     transaction_id INT,
 
+    offer_id INT,
+
+    campaign_id INT,
+
     date_key INT,
 
     customer_key BIGINT,
@@ -189,9 +217,9 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
 
     merchant_key BIGINT,
 
-    offer_key BIGINT NULL,
+    offer_key BIGINT,
 
-    campaign_key BIGINT NULL,
+    campaign_key BIGINT,
 
     transaction_amount DECIMAL(12,2),
 
@@ -233,6 +261,30 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
 
 );
 
+CREATE INDEX idx_fact_reward_transaction_date
+ON fact_reward_transaction(date_key);
+
+CREATE INDEX idx_fact_reward_transaction_customer
+ON fact_reward_transaction(customer_key);
+
+CREATE INDEX idx_fact_reward_transaction_card
+ON fact_reward_transaction(card_key);
+
+CREATE INDEX idx_fact_reward_transaction_merchant
+ON fact_reward_transaction(merchant_key);
+
+CREATE INDEX idx_fact_reward_transaction_offer
+ON fact_reward_transaction(offer_key);
+
+CREATE INDEX idx_fact_reward_transaction_campaign
+ON fact_reward_transaction(campaign_key);
+
+CREATE INDEX idx_fact_reward_transaction_status
+ON fact_reward_transaction(transaction_status);
+
+CREATE INDEX idx_fact_reward_transaction_load
+ON fact_reward_transaction(load_timestamp);
+
 -- =============================================================================
 -- FACT : CUSTOMER REWARD BALANCE
 -- =============================================================================
@@ -262,6 +314,15 @@ CREATE TABLE IF NOT EXISTS fact_reward_balance (
         REFERENCES dim_date(date_key)
 
 );
+
+CREATE INDEX idx_fact_reward_balance_customer
+ON fact_reward_balance(customer_key);
+
+CREATE INDEX idx_fact_reward_balance_date
+ON fact_reward_balance(date_key);
+
+CREATE INDEX idx_fact_reward_balance_load
+ON fact_reward_balance(load_timestamp);
 
 -- =============================================================================
 -- FACT : CAMPAIGN PERFORMANCE
@@ -294,5 +355,14 @@ CREATE TABLE IF NOT EXISTS fact_campaign_performance (
         REFERENCES dim_date(date_key)
 
 );
+
+CREATE INDEX idx_fact_campaign_performance_campaign
+ON fact_campaign_performance(campaign_key);
+
+CREATE INDEX idx_fact_campaign_performance_date
+ON fact_campaign_performance(date_key);
+
+CREATE INDEX idx_fact_campaign_performance_load
+ON fact_campaign_performance(load_timestamp);
 
 SET FOREIGN_KEY_CHECKS = 1;

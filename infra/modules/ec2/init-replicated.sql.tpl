@@ -126,6 +126,10 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     category_id INT NOT NULL,
 
+    offer_id INT,
+
+    campaign_id INT,
+
     merchant_name VARCHAR(100),
 
     transaction_amount DECIMAL(12,2),
@@ -138,7 +142,11 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     INDEX idx_transactions_card (card_id),
 
-    INDEX idx_transactions_category (category_id)
+    INDEX idx_transactions_category (category_id),
+    
+    INDEX idx_transactions_offer (offer_id),
+
+    INDEX idx_transactions_campaign (campaign_id)
 
 );
 
