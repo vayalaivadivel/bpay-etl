@@ -26,6 +26,8 @@ WORKDIR /files
 # COPY PROJECT FILES
 ##########################################################
 
+COPY project-config.json /files/project-config.json
+COPY metadata/ /files/metadata/
 COPY workflows/ /files/workflows/
 COPY pipelines/ /files/pipelines/
 COPY jdbc/ /files/jdbc/
@@ -45,6 +47,11 @@ RUN chmod +x /files/scripts/*.sh || true
 ENV HOP_SERVER_PORT=8080
 ENV HOP_SERVER_HOSTNAME=0.0.0.0
 ENV HOP_LOG_LEVEL=Basic
+
+ENV HOP_PROJECT_NAME=card-rewards-etl
+ENV HOP_PROJECT_FOLDER=/files
+ENV HOP_SERVER_METADATA_FOLDER=/files/metadata
+ENV HOP_SHARED_JDBC_FOLDERS=/files/jdbc
 
 ##########################################################
 # JAVA OPTIONS
