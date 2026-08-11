@@ -312,6 +312,8 @@ resource "aws_security_group_rule" "rds_from_airflow" {
   source_security_group_id = module.airflow.airflow_security_group_id
 }
 
+
+
 resource "time_sleep" "wait_for_db_init" {
 
   depends_on = [
@@ -338,4 +340,16 @@ module "route53" {
   alb_dns_name = module.hop.alb_dns
 
   dns_records = var.dns_records
+}
+
+resource "aws_security_group_rule" "rds_from_hop" {
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+
+  security_group_id        = module.rds.rds_sg_id
+  source_security_group_id = module.hop.hop_security_group_id
+
+  description = "Allow Hop ECS to connect to MySQL RDS"
 }
