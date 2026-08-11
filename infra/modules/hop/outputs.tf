@@ -19,3 +19,7 @@ output "alb_sg_id" {
 
   value = aws_security_group.hop_alb.id
 }
+
+output "hop_security_group_id" {
+  value = aws_security_group.hop_ecs.id
+}
