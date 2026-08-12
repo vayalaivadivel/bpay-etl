@@ -343,10 +343,10 @@ module "route53" {
 }
 
 resource "aws_security_group_rule" "rds_from_hop" {
-  type                     = "ingress"
-  from_port                = 3306
-  to_port                  = 3306
-  protocol                 = "tcp"
+  type      = "ingress"
+  from_port = 3306
+  to_port   = 3306
+  protocol  = "tcp"
 
   security_group_id        = module.rds.rds_sg_id
   source_security_group_id = module.hop.hop_security_group_id
