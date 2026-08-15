@@ -213,6 +213,7 @@ resource "aws_ecs_task_definition" "hop" {
   memory = "2048"
 
   execution_role_arn = var.ecs_task_execution_role_arn
+  task_role_arn      = var.ecs_task_role_arn
 
   container_definitions = jsonencode([
 
@@ -268,9 +269,9 @@ resource "aws_ecs_service" "hop" {
 
   task_definition = aws_ecs_task_definition.hop.arn
 
-  desired_count = 1
-
-  launch_type = "FARGATE"
+  desired_count          = 1
+  enable_execute_command = true
+  launch_type            = "FARGATE"
 
   network_configuration {
 

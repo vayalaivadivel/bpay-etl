@@ -25,3 +25,6 @@ output "ecs_task_execution_role_arn" {
 output "dms_cloudwatch_role_dependency" {
   value = aws_iam_role.dms_cloudwatch_logs_role
 }
+output "hop_ecs_task_role_arn" {
+  value = aws_iam_role.hop_ecs_task.arn
+}
