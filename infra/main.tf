@@ -187,6 +187,7 @@ module "iam" {
 ############################################################
 
 module "hop" {
+  ecs_task_role_arn = module.iam.hop_ecs_task_role_arn
 
   source = "./modules/hop"
 
