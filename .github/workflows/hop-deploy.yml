@@ -1,4 +1,5 @@
 name: Hop-Deploy
+
 on:
   push:
     branches: [main]
@@ -35,14 +36,30 @@ jobs:
       AWS_REGION: ap-south-1
       APP_NAME: bpay-etl
       ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+
       ECR_REPOSITORY: glorytechsystems-platform-images
       IMAGE_TAG: bpay-etl-hop-${{ github.event.inputs.environment || 'dev' }}
+
       ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
       ECS_SERVICE_NAME: bpay-etl-hop-service-${{ github.event.inputs.environment || 'dev' }}
 
+      ECS_CONTAINER_NAME: bpay-etl-hop
+
+      HOP_PROJECT: card-rewards-etl
+      HOP_WORKFLOW: /files/workflows/raw_to_replicated.hwf
+
     steps:
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      # ============================================================
+      # AWS
+      # ============================================================
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -54,10 +71,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           aws sts get-caller-identity
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
-          echo "IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}" >> $GITHUB_ENV
+
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          echo "ACCOUNT_ID=${ACCOUNT_ID}" >> "$GITHUB_ENV"
+
+          echo "IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}" >> "$GITHUB_ENV"
+
+      # ============================================================
+      # ECR
+      # ============================================================
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -65,91 +92,267 @@ jobs:
       - name: Verify ECR Repository
         run: |
           set -euo pipefail
-          aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION}
+
+          aws ecr describe-repositories \
+            --repository-names "${ECR_REPOSITORY}" \
+            --region "${AWS_REGION}"
+
+      # ============================================================
+      # ECS
+      # ============================================================
 
       - name: Verify ECS Cluster
         run: |
           set -euo pipefail
-          aws ecs describe-clusters --clusters ${ECS_CLUSTER_NAME} --region ${AWS_REGION}
+
+          aws ecs describe-clusters \
+            --clusters "${ECS_CLUSTER_NAME}" \
+            --region "${AWS_REGION}"
 
       - name: Verify ECS Service
         run: |
-          set -euo pipefail   
-          aws ecs describe-services --cluster ${ECS_CLUSTER_NAME} --services ${ECS_SERVICE_NAME} --region ${AWS_REGION}
+          set -euo pipefail
+
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}"
+
+      # ============================================================
+      # BUILD
+      # ============================================================
 
       - name: Build Docker Image
         run: |
           set -euo pipefail
-          docker build --pull --no-cache \
-            -t ${APP_NAME}:${IMAGE_TAG} \
+
+          docker build \
+            --pull \
+            --no-cache \
+            -t "${APP_NAME}:${IMAGE_TAG}" \
             -f hop-orchestration/docker/Dockerfile \
             ./hop-orchestration
 
       - name: Verify Local Docker Image
         run: |
           set -euo pipefail
-          docker images
-          docker image inspect ${APP_NAME}:${IMAGE_TAG}
+
+          docker image inspect "${APP_NAME}:${IMAGE_TAG}"
+
+      # ============================================================
+      # PUSH
+      # ============================================================
 
       - name: Tag Docker Image
         run: |
           set -euo pipefail
-          docker tag ${APP_NAME}:${IMAGE_TAG} ${IMAGE_URI}
+
+          docker tag \
+            "${APP_NAME}:${IMAGE_TAG}" \
+            "${IMAGE_URI}"
 
       - name: Push Docker Image
         run: |
           set -euo pipefail
-          docker push ${IMAGE_URI}
+
+          echo "Pushing ${IMAGE_URI}"
+
+          docker push "${IMAGE_URI}"
 
       - name: Verify Image
         run: |
           set -euo pipefail
+
           aws ecr describe-images \
-            --repository-name ${ECR_REPOSITORY} \
-            --image-ids imageTag=${IMAGE_TAG} \
-            --region ${AWS_REGION}
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --region "${AWS_REGION}"
+
+      # ============================================================
+      # ECS DEPLOYMENT
+      # ============================================================
 
       - name: Restart ECS Service
         run: |
           set -euo pipefail
+
           aws ecs update-service \
-            --cluster ${ECS_CLUSTER_NAME} \
-            --service ${ECS_SERVICE_NAME} \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --service "${ECS_SERVICE_NAME}" \
             --force-new-deployment \
-            --region ${AWS_REGION}
-          sleep 15
+            --region "${AWS_REGION}"
 
       - name: Wait for ECS Service
         run: |
           set -euo pipefail
+
+          echo "Waiting for ECS service to become stable..."
+
           aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}"
+
+          echo "ECS service is stable."
+
+
+      - name: Get Running Hop Task
+        id: hop-task
+        run: |
+          set -euo pipefail
+
+          TASK_ARN=$(aws ecs list-tasks \
             --cluster ${ECS_CLUSTER_NAME} \
-            --services ${ECS_SERVICE_NAME} \
+            --service-name ${ECS_SERVICE_NAME} \
+            --desired-status RUNNING \
+            --query 'taskArns[0]' \
+            --output text \
+            --region ${AWS_REGION})
+
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "ERROR: No running Hop ECS task found"
+            exit 1
+          fi
+
+          echo "TASK_ARN=$TASK_ARN"
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Execute Hop ETL Workflow
+        run: |
+          set -euo pipefail
+
+          TASK_ARN="${{ steps.hop-task.outputs.task_arn }}"
+
+          echo "Executing raw_to_replicated workflow..."
+          echo "Task: $TASK_ARN"
+
+          aws ecs execute-command \
+            --cluster ${ECS_CLUSTER_NAME} \
+            --task "$TASK_ARN" \
+            --container bpay-etl-hop \
+            --interactive \
+            --command "/opt/hop/hop-run.sh -j card-rewards-etl -f /files/workflows/raw_to_replicated.hwf" \
             --region ${AWS_REGION}
-      
+
+      - name: Verify ETL Result
+        run: |
+          echo "======================================="
+          echo "Hop ETL Workflow Completed"
+          echo "======================================="
+          echo "Workflow : raw_to_replicated.hwf"
+          echo "Project  : card-rewards-etl"
+          echo "======================================="  
+
+      # ============================================================
+      # VERIFY RUNNING TASK
+      # ============================================================
+
+      - name: Get Running Hop Task
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --service-name "${ECS_SERVICE_NAME}" \
+            --desired-status RUNNING \
+            --query 'taskArns[0]' \
+            --output text \
+            --region "${AWS_REGION}")
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "ERROR: No running Hop ECS task found."
+            exit 1
+          fi
+
+          echo "HOP_TASK_ARN=${TASK_ARN}" >> "$GITHUB_ENV"
+
+          echo "Running Hop task:"
+          echo "${TASK_ARN}"
+
+      - name: Verify Hop Container
+        run: |
+          set -euo pipefail
+
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --tasks "${HOP_TASK_ARN}" \
+            --region "${AWS_REGION}" \
+            --query 'tasks[0].containers[].{Name:name,Status:lastStatus,Health:healthStatus}' \
+            --output table
+
+      # ============================================================
+      # EXECUTE HOP WORKFLOW
+      # ============================================================
+
+      - name: Execute RAW to REPLICATED Workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "======================================="
+          echo "Apache Hop Workflow Execution"
+          echo "======================================="
+          echo "Project  : ${HOP_PROJECT}"
+          echo "Workflow : ${HOP_WORKFLOW}"
+          echo "Task     : ${HOP_TASK_ARN}"
+          echo "======================================="
+
+          aws ecs execute-command \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --task "${HOP_TASK_ARN}" \
+            --container "${ECS_CONTAINER_NAME}" \
+            --interactive \
+            --command "/opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${HOP_WORKFLOW}" \
+            --region "${AWS_REGION}"
+
+          echo "======================================="
+          echo "Hop Workflow Execution Completed"
+          echo "======================================="
+
+      # ============================================================
+      # LIST TASKS
+      # ============================================================
+
       - name: List ECS Tasks
+        if: always()
         run: |
           set -euo pipefail
 
           aws ecs list-tasks \
-            --cluster ${ECS_CLUSTER_NAME} \
-            --region ${AWS_REGION}
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --region "${AWS_REGION}"
+
+      # ============================================================
+      # ECS EVENTS
+      # ============================================================
 
       - name: Show ECS Events
         if: always()
         run: |
           set -euo pipefail
+
           aws ecs describe-services \
-            --cluster ${ECS_CLUSTER_NAME} \
-            --services ${ECS_SERVICE_NAME} \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
             --query 'services[0].events[0:10]' \
-            --region ${AWS_REGION}
+            --output table
+
+      # ============================================================
+      # CLEANUP
+      # ============================================================
 
       - name: Docker Cleanup
         if: always()
         run: |
           set -euo pipefail
+
           docker image prune -af
+
+      # ============================================================
+      # SUMMARY
+      # ============================================================
 
       - name: Deployment Summary
         if: success()
@@ -160,6 +363,9 @@ jobs:
           echo "Environment : ${ENVIRONMENT}"
           echo "Cluster     : ${ECS_CLUSTER_NAME}"
           echo "Service     : ${ECS_SERVICE_NAME}"
+          echo "Container   : ${ECS_CONTAINER_NAME}"
+          echo "Project     : ${HOP_PROJECT}"
+          echo "Workflow    : ${HOP_WORKFLOW}"
           echo "Repository  : ${ECR_REPOSITORY}"
           echo "Image       : ${IMAGE_URI}"
           echo "======================================="
