@@ -1,0 +1,239 @@
+name: Hop-ETL
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: hop-etl-${{ github.event.inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  hop-etl:
+    name: Apache Hop ETL Execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      AWS_REGION: ap-south-1
+      APP_NAME: bpay-etl
+      ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+
+      ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
+      ECS_SERVICE_NAME: bpay-etl-hop-service-${{ github.event.inputs.environment || 'dev' }}
+      ECS_CONTAINER_NAME: bpay-etl-hop
+
+      HOP_PROJECT: card-rewards-etl
+      HOP_WORKFLOW: /files/workflows/raw_to_replicated.hwf
+
+    steps:
+
+      # ------------------------------------------------------------
+      # CHECKOUT
+      # ------------------------------------------------------------
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------
+      # AWS AUTHENTICATION
+      # ------------------------------------------------------------
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ------------------------------------------------------------
+      # VERIFY AWS
+      # ------------------------------------------------------------
+      - name: Verify AWS Login
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "======================================="
+          echo "AWS Identity"
+          echo "======================================="
+
+          aws sts get-caller-identity
+
+          echo
+          echo "Environment : ${ENVIRONMENT}"
+          echo "Region      : ${AWS_REGION}"
+          echo "Cluster     : ${ECS_CLUSTER_NAME}"
+          echo "Service     : ${ECS_SERVICE_NAME}"
+          echo "Container   : ${ECS_CONTAINER_NAME}"
+          echo "Project     : ${HOP_PROJECT}"
+          echo "Workflow    : ${HOP_WORKFLOW}"
+
+      # ------------------------------------------------------------
+      # VERIFY ECS CLUSTER
+      # ------------------------------------------------------------
+      - name: Verify ECS Cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== ECS CLUSTER ==="
+
+          aws ecs describe-clusters \
+            --clusters "${ECS_CLUSTER_NAME}" \
+            --region "${AWS_REGION}" \
+            --query 'clusters[0].{Name:clusterName,Status:status,Running:runningTasksCount}' \
+            --output table
+
+      # ------------------------------------------------------------
+      # VERIFY ECS SERVICE
+      # ------------------------------------------------------------
+      - name: Verify ECS Service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== ECS SERVICE ==="
+
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
+            --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,Pending:pendingCount,TaskDefinition:taskDefinition}' \
+            --output table
+
+      # ------------------------------------------------------------
+      # FIND RUNNING HOP TASK
+      # ------------------------------------------------------------
+      - name: Find Running Hop Task
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== FIND RUNNING HOP TASK ==="
+
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --service-name "${ECS_SERVICE_NAME}" \
+            --desired-status RUNNING \
+            --region "${AWS_REGION}" \
+            --query 'taskArns[0]' \
+            --output text)
+
+          if [ -z "${TASK_ARN}" ] || [ "${TASK_ARN}" = "None" ]; then
+            echo "ERROR: No running Hop ECS task found."
+            exit 1
+          fi
+
+          echo "Running task:"
+          echo "${TASK_ARN}"
+
+          echo "TASK_ARN=${TASK_ARN}" >> "${GITHUB_ENV}"
+
+      # ------------------------------------------------------------
+      # VERIFY HOP TASK
+      # ------------------------------------------------------------
+      - name: Verify Hop Task
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== HOP ECS TASK ==="
+
+          aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --tasks "${TASK_ARN}" \
+            --region "${AWS_REGION}" \
+            --query 'tasks[0].{LastStatus:lastStatus,DesiredStatus:desiredStatus,TaskDefinition:taskDefinition,TaskArn:taskArn,StoppedReason:stoppedReason}' \
+            --output table
+
+      # ------------------------------------------------------------
+      # EXECUTE HOP WORKFLOW
+      # ------------------------------------------------------------
+      - name: Execute RAW to REPLICATED Workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "======================================="
+          echo "Starting Apache Hop ETL"
+          echo "======================================="
+          echo "Environment : ${ENVIRONMENT}"
+          echo "Cluster     : ${ECS_CLUSTER_NAME}"
+          echo "Service     : ${ECS_SERVICE_NAME}"
+          echo "Task        : ${TASK_ARN}"
+          echo "Project     : ${HOP_PROJECT}"
+          echo "Workflow    : ${HOP_WORKFLOW}"
+          echo "======================================="
+
+          aws ecs execute-command \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --task "${TASK_ARN}" \
+            --container "${ECS_CONTAINER_NAME}" \
+            --interactive \
+            --command "/opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${HOP_WORKFLOW}" \
+            --region "${AWS_REGION}"
+
+      # ------------------------------------------------------------
+      # VERIFY ECS SERVICE AFTER ETL
+      # ------------------------------------------------------------
+      - name: Verify Hop Service
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== ECS SERVICE AFTER ETL ==="
+
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
+            --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,Pending:pendingCount}' \
+            --output table
+
+      # ------------------------------------------------------------
+      # SHOW ECS EVENTS ON FAILURE
+      # ------------------------------------------------------------
+      - name: Show ECS Events
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== RECENT ECS EVENTS ==="
+
+          aws ecs describe-services \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --services "${ECS_SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
+            --query 'services[0].events[0:10]' \
+            --output table
+
+      # ------------------------------------------------------------
+      # SUCCESS SUMMARY
+      # ------------------------------------------------------------
+      - name: ETL Summary
+        if: success()
+        shell: bash
+        run: |
+          echo "======================================="
+          echo "Apache Hop ETL Successful"
+          echo "======================================="
+          echo "Environment : ${ENVIRONMENT}"
+          echo "Cluster     : ${ECS_CLUSTER_NAME}"
+          echo "Service     : ${ECS_SERVICE_NAME}"
+          echo "Task        : ${TASK_ARN}"
+          echo "Project     : ${HOP_PROJECT}"
+          echo "Workflow    : ${HOP_WORKFLOW}"
+          echo "======================================="
