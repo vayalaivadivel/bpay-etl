@@ -5,10 +5,10 @@
       "databaseName": "bpaydb_replicated_dev",
       "pluginId": "MYSQL",
       "accessType": 0,
-      "hostname": "127.0.0.1",
+      "hostname": "bpay-etl-db-dev.ctuso8me0bks.ap-south-1.rds.amazonaws.com",
       "password": "Encrypted 2be98afc86af19380a20fab7c9fc3fd89",
       "pluginName": "MySQL",
-      "port": "3307",
+      "port": "3306",
       "driverClassName": "Mysql 8+",
       "attributes": {
         "SUPPORTS_TIMESTAMP_DATA_TYPE": "Y",
