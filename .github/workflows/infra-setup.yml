@@ -174,6 +174,16 @@ jobs:
       - name: Create rendered SQL directory
         if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
         run: mkdir -p .terraform-rendered/ec2
+        
+      - name: Setup Terraform
+        if: contains(fromJSON('["plan", "apply", "destroy"]'), github.event.inputs.action)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Verify Terraform Installation
+        if: contains(fromJSON('["plan", "apply", "destroy"]'), github.event.inputs.action)
+        run: terraform version
 
       #########################################
       # TERRAFORM INIT
