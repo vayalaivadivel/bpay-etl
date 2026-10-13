@@ -208,11 +208,8 @@ jobs:
       #########################################
 
       - name: Terraform Plan
-        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
-        shell: bash
+        if: contains(fromJSON('["plan", "apply", "destroy"]'), github.event.inputs.action)
         run: |
-          set -euo pipefail
-
           terraform plan \
             -parallelism=20 \
             -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
