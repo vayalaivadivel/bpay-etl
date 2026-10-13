@@ -3,7 +3,6 @@ name: Infra-Setup
 on:
   workflow_dispatch:
     inputs:
-
       environment:
         description: "Select environment"
         required: true
@@ -18,6 +17,7 @@ on:
         required: true
         type: choice
         options:
+          - verify
           - apply
           - destroy
 
@@ -30,283 +30,306 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-
   terraform:
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 90
 
-    environment:
-      ${{ github.event.inputs.environment }}
+    environment: ${{ github.event.inputs.environment }}
 
     defaults:
       run:
         working-directory: infra
 
     env:
-      TF_IN_AUTOMATION: true
+      TF_IN_AUTOMATION: "true"
       TF_VAR_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      
+
     steps:
+      #########################################
+      # CHECKOUT
+      #########################################
 
-    #########################################
-    # CHECKOUT
-    #########################################
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Checkout
-      uses: actions/checkout@v4
+      #########################################
+      # CONFIGURE AWS
+      #########################################
 
-    #########################################
-    # CONFIGURE AWS
-    #########################################
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
 
-    - name: Configure AWS (OIDC)
-      uses: aws-actions/configure-aws-credentials@v4
+      #########################################
+      # VERIFY AWS LOGIN
+      #########################################
 
-      with:
-        role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+      - name: Verify AWS Login
+        run: |
+          set -euo pipefail
 
-        aws-region: ap-south-1
+          echo "===================================="
+          echo "GitHub Repository"
+          echo "${GITHUB_REPOSITORY}"
+          echo
+          echo "GitHub Branch"
+          echo "${GITHUB_REF_NAME}"
+          echo
+          echo "AWS Identity"
+          aws sts get-caller-identity
+          echo "===================================="
 
-    #########################################
-    # INSTALL MYSQL CLIENT
-    #########################################
+      #########################################
+      # BLOCK PROD DESTROY EARLY
+      #########################################
 
-    - name: Install MySQL Client
-      run: |
-
-        sudo apt-get update
-
-        sudo apt-get install -y mysql-client || \
-        sudo apt-get install -y default-mysql-client
-
-        mysql --version
-
-    #########################################
-    # CREATE PEM FILE
-    #########################################
-
-    - name: Create EC2 PEM file
-      run: |
-
-        echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
-
-        chmod 400 bastion-key.pem
-    #########################################
-    # VERIFY PEM FILE
-    #########################################
-
-    - name: Verify PEM File
-      run: |
-
-        ls -l bastion-key.pem
-
-        echo "First line:"
-        head -1 bastion-key.pem
-
-        echo "Last line:"
-        tail -1 bastion-key.pem
-
-        
-    #########################################
-    # SETUP TERRAFORM
-    #########################################
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-
-      with:
-        terraform_wrapper: false
-
-    #########################################
-    # VERIFY OIDC LOGIN
-    #########################################
-
-    - name: Verify AWS Login
-
-      run: |
-
-        echo "===================================="
-
-        echo "GitHub Repository"
-
-        echo "${{ github.repository }}"
-
-        echo
-
-        echo "GitHub Branch"
-
-        echo "${{ github.ref_name }}"
-
-        echo
-
-        echo "AWS Identity"
-
-        aws sts get-caller-identity
-
-        echo "===================================="
-
-    #########################################
-    # TERRAFORM INIT
-    #########################################
-    - name: Create rendered SQL directory
-      run: mkdir -p infra/.terraform-rendered/ec2
-
-    - name: Terraform Init
-      run: |
-
-        terraform init -upgrade \
-          -backend-config="key=bpay-etl/${{ github.event.inputs.environment }}/terraform.tfstate"
-
-    #########################################
-    # TERRAFORM VALIDATE
-    #########################################
-
-    - name: Terraform Validate
-      run: terraform validate
-
-    #########################################
-    # TERRAFORM FORMAT CHECK
-    #########################################
-
-    - name: Terraform Format Check
-      run: terraform fmt -check
-
-    #########################################
-    # TERRAFORM PLAN
-    #########################################
-
-    - name: Terraform Plan
-      shell: bash
-
-      run: |
-
-        set +e
-
-        terraform plan \
-          -parallelism=20 \
-          -var-file=environments/${{ github.event.inputs.environment }}.tfvars \
-          -var="private_key_path=bastion-key.pem" \
-          -out=tfplan
-
-        EXIT_CODE=$?
-
-        echo "Terraform exit code: $EXIT_CODE"
-
-        if [ "$EXIT_CODE" -eq 1 ]; then
-
-          echo "❌ Terraform plan failed"
-
+      - name: Block Prod Destroy
+        if: github.event.inputs.action == 'destroy' && github.event.inputs.environment == 'prod'
+        run: |
+          echo "ERROR: Destroy is not allowed for PROD."
           exit 1
-        fi
 
-        echo "✅ Terraform plan successful"
+      #########################################
+      # VERIFY AWS, TERRAFORM BACKEND AND ECR
+      #########################################
 
-    - name: Verify rendered SQL
-      run: |
-        ls -R infra/.terraform-rendered || true
+      - name: Verify Terraform Backend and ECR Access
+        if: github.event.inputs.action == 'verify'
+        run: |
+          set -euo pipefail
 
-    #########################################
-    # TERRAFORM APPLY
-    #########################################
+          echo "Checking AWS identity..."
+          aws sts get-caller-identity
 
-    - name: Terraform Apply
-      if: github.event.inputs.action == 'apply'
+          echo "Checking Terraform state bucket..."
+          aws s3api head-bucket \
+            --bucket jungle-terraform-bucket
 
-      run: |
+          echo "Checking environment state prefix..."
+          aws s3api list-objects-v2 \
+            --bucket jungle-terraform-bucket \
+            --prefix "bpay-etl/${{ github.event.inputs.environment }}/" \
+            --max-keys 5
 
-        terraform apply \
-          -parallelism=20 \
-          -auto-approve \
-          -var="private_key_path=bastion-key.pem" \
-          tfplan
+          echo "Checking shared ECR repository..."
+          aws ecr describe-repositories \
+            --repository-names jungle-ecr-images \
+            --region ap-south-1
 
-    #########################################
-    # DISPLAY OUTPUTS
-    #########################################
+          echo "Checking ECR image-list permission..."
+          aws ecr list-images \
+            --repository-name jungle-ecr-images \
+            --region ap-south-1
 
-    - name: Display Terraform Outputs
-      if: github.event.inputs.action == 'apply'
+          echo "AWS identity, S3 backend, and ECR access verified."
 
-      run: |
+      #########################################
+      # INSTALL MYSQL CLIENT
+      #########################################
 
-        echo "======================================"
-        echo "Terraform Outputs"
-        echo "======================================"
+      - name: Install MySQL Client
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: |
+          set -euo pipefail
 
-        terraform output
+          sudo apt-get update
+          sudo apt-get install -y mysql-client || \
+            sudo apt-get install -y default-mysql-client
 
-    #########################################
-    # BLOCK PROD DESTROY
-    #########################################
+          mysql --version
 
-    - name: Block Prod Destroy
-      if: github.event.inputs.action == 'destroy' &&
-          github.event.inputs.environment == 'prod'
+      #########################################
+      # CREATE PEM FILE
+      #########################################
 
-      run: |
+      - name: Create EC2 PEM file
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        env:
+          EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
 
-        echo "❌ Destroy not allowed for PROD"
+          test -n "$EC2_PRIVATE_KEY"
+          umask 077
+          printf '%s\n' "$EC2_PRIVATE_KEY" > bastion-key.pem
+          chmod 400 bastion-key.pem
 
-        exit 1
+      #########################################
+      # SETUP TERRAFORM
+      #########################################
 
-    #########################################
-    # DELETE HOP ECR IMAGE
-    #########################################
+      - name: Setup Terraform
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
-    - name: Delete Hop ECR Image
-      if: github.event.inputs.action == 'destroy'
+      #########################################
+      # CREATE RENDERED SQL DIRECTORY
+      #########################################
 
-      run: |
+      - name: Create rendered SQL directory
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: mkdir -p .terraform-rendered/ec2
 
-        echo "======================================"
-        echo "Deleting Hop Docker Image"
-        echo "======================================"
+      #########################################
+      # TERRAFORM INIT
+      #########################################
 
-        aws ecr batch-delete-image \
-          --repository-name glorytechsystems-platform-images \
-           --image-ids imageTag=bpay-etl-hop-${{ github.event.inputs.environment }} \
-          --region ap-south-1 || true
+      - name: Terraform Init
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: |
+          set -euo pipefail
 
-        aws ecr batch-delete-image \
-          --repository-name glorytechsystems-platform-images \
-           --image-ids imageTag=bpay-etl-airflow-${{ github.event.inputs.environment }} \
-          --region ap-south-1 || true
+          terraform init \
+            -backend-config="key=bpay-etl/${{ github.event.inputs.environment }}/terraform.tfstate"
 
-        echo "======================================"
-        echo "Hop Docker Image Deleted"
-        echo "======================================"
+      #########################################
+      # TERRAFORM VALIDATE
+      #########################################
 
-    #########################################
-    # TERRAFORM DESTROY
-    #########################################
+      - name: Terraform Validate
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: terraform validate
 
-    - name: Terraform Destroy
-      if: github.event.inputs.action == 'destroy'
-      shell: bash
+      #########################################
+      # TERRAFORM FORMAT CHECK
+      #########################################
 
-      run: |
+      - name: Terraform Format Check
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: terraform fmt -check
 
-        set +e
+      #########################################
+      # TERRAFORM PLAN
+      #########################################
 
-        terraform destroy \
-          -parallelism=20 \
-          -auto-approve \
-          -var-file=environments/${{ github.event.inputs.environment }}.tfvars
+      - name: Terraform Plan
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        shell: bash
+        run: |
+          set -euo pipefail
 
-        EXIT_CODE=$?
+          terraform plan \
+            -parallelism=20 \
+            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
+            -var="private_key_path=bastion-key.pem" \
+            -out=tfplan
 
-        if [ "$EXIT_CODE" -ne 0 ]; then
+      #########################################
+      # VERIFY RENDERED SQL
+      #########################################
 
-          echo "Terraform destroy finished with expected Route53 Hosted Zone protection."
+      - name: Verify rendered SQL
+        if: contains(fromJSON('["apply","destroy"]'), github.event.inputs.action)
+        run: |
+          set -euo pipefail
+          ls -R .terraform-rendered || true
 
-          echo "Checking for remaining infrastructure..."
+      #########################################
+      # TERRAFORM APPLY
+      #########################################
 
-          terraform state list
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve tfplan
 
-          exit 0
+      #########################################
+      # DISPLAY OUTPUTS
+      #########################################
 
-        fi
+      - name: Display Terraform Outputs
+        if: github.event.inputs.action == 'apply'
+        run: |
+          set -euo pipefail
 
-        echo "Terraform destroy completed successfully."
+          echo "======================================"
+          echo "Terraform Outputs"
+          echo "======================================"
+
+          terraform output
+
+      #########################################
+      # TERRAFORM DESTROY
+      #########################################
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform destroy \
+            -parallelism=20 \
+            -auto-approve \
+            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
+            -var="private_key_path=bastion-key.pem"
+
+          echo "Terraform destroy completed successfully."
+
+      #########################################
+      # DELETE ENVIRONMENT-SPECIFIC ECR IMAGES
+      # KEEP THE SHARED ECR REPOSITORY
+      #########################################
+
+      - name: Delete Environment Images from ECR
+        if: success() && github.event.inputs.action == 'destroy'
+        env:
+          AWS_REGION: ap-south-1
+          ECR_REPOSITORY: jungle-ecr-images
+          ENVIRONMENT: ${{ github.event.inputs.environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "======================================"
+          echo "Cleaning up environment-specific ECR images"
+          echo "Repository: ${ECR_REPOSITORY}"
+          echo "Environment: ${ENVIRONMENT}"
+          echo "======================================"
+
+          for image_tag in \
+            "bpay-etl-hop-${ENVIRONMENT}" \
+            "bpay-etl-airflow-${ENVIRONMENT}"
+          do
+            echo "Checking image tag: ${image_tag}"
+
+            existing_tag=$(aws ecr list-images \
+              --repository-name "${ECR_REPOSITORY}" \
+              --filter tagStatus=TAGGED \
+              --query "imageIds[?imageTag=='${image_tag}'].imageTag | [0]" \
+              --output text \
+              --region "${AWS_REGION}")
+
+            if [[ -z "${existing_tag}" || "${existing_tag}" == "None" ]]; then
+              echo "Image tag does not exist; skipping: ${image_tag}"
+              continue
+            fi
+
+            echo "Deleting image tag: ${image_tag}"
+
+            response=$(aws ecr batch-delete-image \
+              --repository-name "${ECR_REPOSITORY}" \
+              --image-ids "imageTag=${image_tag}" \
+              --region "${AWS_REGION}" \
+              --output json)
+
+            echo "${response}" | jq .
+
+            failure_count=$(echo "${response}" | jq '.failures | length')
+
+            if [[ "${failure_count}" -gt 0 ]]; then
+              echo "ERROR: ECR reported failures for ${image_tag}:" >&2
+              echo "${response}" | jq '.failures' >&2
+              exit 1
+            fi
+
+            echo "Successfully deleted image tag: ${image_tag}"
+          done
+
+          echo "======================================"
+          echo "ECR image cleanup completed."
+          echo "Shared repository retained: ${ECR_REPOSITORY}"
+          echo "======================================"
