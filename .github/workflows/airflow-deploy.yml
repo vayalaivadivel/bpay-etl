@@ -37,9 +37,8 @@ permissions:
 jobs:
 
   airflow-deploy:
-
     runs-on: ubuntu-latest
-
+    environment: ${{ github.event.inputs.environment || 'dev' }}
     timeout-minutes: 60
 
     env:
