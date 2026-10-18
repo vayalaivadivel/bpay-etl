@@ -93,3 +93,20 @@ node_modules/
 .DS_Store
 
 infra/modules/ec2/rendered/
+
+
+
+# Terraform execution plans
+*.tfplan
+*.tfplan.*
+
+# Terraform state and backups
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*state-backup*.json
+
+# Terraform working files
+**/.terraform/
+crash.log
+crash.*.log
