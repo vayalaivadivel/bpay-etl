@@ -40,7 +40,7 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
           aws-region: ap-south-1
           
       - name: Verify AWS Login
@@ -68,12 +68,12 @@ jobs:
       - name: Delete Hop ECR Image
         run: |
           aws ecr batch-delete-image \
-            --repository-name glorytechsystems-platform-images \
+            --repository-name jungle-ecr-images \
             --image-ids imageTag=bpay-etl-hop-${ENVIRONMENT} \
             --region ap-south-1 || true
 
           aws ecr batch-delete-image \
-            --repository-name glorytechsystems-platform-images \
+            --repository-name jungle-ecr-images \
             --image-ids imageTag=bpay-etl-airflow-${ENVIRONMENT} \
             --region ap-south-1 || true
 

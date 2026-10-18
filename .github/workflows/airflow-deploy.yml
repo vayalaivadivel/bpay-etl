@@ -50,7 +50,7 @@ jobs:
 
       AWS_REGION: ap-south-1
 
-      AWS_ACCOUNT_ID: 986401823783
+      AWS_ACCOUNT_ID: 518060119469
 
       #######################################################
       # APPLICATION
@@ -64,11 +64,11 @@ jobs:
       # ECR
       #######################################################
 
-      ECR_REPOSITORY: glorytechsystems-platform-images
+      ECR_REPOSITORY: jungle-ecr-images
 
       IMAGE_TAG: bpay-etl-airflow-${{ github.event.inputs.environment || 'dev' }}
 
-      IMAGE_URI: 986401823783.dkr.ecr.ap-south-1.amazonaws.com/glorytechsystems-platform-images:bpay-etl-airflow-${{ github.event.inputs.environment || 'dev' }}
+      IMAGE_URI: 518060119469.dkr.ecr.ap-south-1.amazonaws.com/jungle-ecr-images:bpay-etl-airflow-${{ github.event.inputs.environment || 'dev' }}
       #######################################################
       # ECS
       #######################################################
@@ -97,7 +97,7 @@ jobs:
 
         with:
 
-          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
 
           aws-region: ap-south-1
 

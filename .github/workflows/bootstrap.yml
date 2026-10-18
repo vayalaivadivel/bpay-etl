@@ -43,7 +43,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v4
 
       with:
-        role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+        role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
         aws-region: ap-south-1
 
     #########################################

@@ -37,7 +37,7 @@ jobs:
       APP_NAME: bpay-etl
       ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
 
-      ECR_REPOSITORY: glorytechsystems-platform-images
+      ECR_REPOSITORY: jungle-ecr-images
       IMAGE_TAG: bpay-etl-hop-${{ github.event.inputs.environment || 'dev' }}
 
       ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
@@ -60,7 +60,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::986401823783:role/bpay-etl-githubaction-role
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS Login
