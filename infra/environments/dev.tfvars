@@ -47,7 +47,7 @@ public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTij7lAhW5+VTHnCcMwV+/X/qRVPF
 hop_username = "ravula"
 
 hop_password = "Ravula!123"
-domain_name  = "sakki.in"
+domain_name  = "vayalai.in"
 dns_records = {
   airflow = "airflow"
   hop     = "hop"
