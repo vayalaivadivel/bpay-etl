@@ -15,7 +15,7 @@ resource "aws_cloudwatch_log_group" "airflow" {
 
 resource "aws_lb_target_group" "airflow" {
 
-  name        = "${var.app_name}-airflow-tg"
+  name        = "${var.app_name}-airflow-tg-${var.env}"
   port        = 8080
   protocol    = "HTTP"
   target_type = "ip"
