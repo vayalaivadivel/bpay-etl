@@ -35,8 +35,8 @@ permissions:
   contents: read
 
 jobs:
-
   airflow-deploy:
+    name: Apache Airflow ECS Deployment
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
     timeout-minutes: 60

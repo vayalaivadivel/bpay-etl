@@ -219,11 +219,19 @@ resource "aws_ecs_task_definition" "hop" {
 
     {
 
-      name = "${var.app_name}-hop"
-
-      image = "${var.ecr_repository_url}:bpay-etl-hop-${var.env}"
-
+      name      = "${var.app_name}-hop"
+      image     = "${var.ecr_repository_url}:bpay-etl-hop-${var.env}"
       essential = true
+      environment = [
+        {
+          name  = "HOP_SERVER_USER"
+          value = var.hop_username
+        },
+        {
+          name  = "HOP_SERVER_PASS"
+          value = var.hop_password
+        }
+      ]
 
       "portMappings" : [
         {

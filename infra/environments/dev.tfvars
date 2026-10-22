@@ -43,10 +43,8 @@ public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTij7lAhW5+VTHnCcMwV+/X/qRVPF
 #########################################
 # APACHE HOP
 #########################################
-
-hop_username = "ravula"
-
-hop_password = "Ravula!123"
+hop_username = "vadivel"
+hop_password = "vadivel"
 domain_name  = "vayalai.in"
 dns_records = {
   airflow = "airflow"
