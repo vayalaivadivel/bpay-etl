@@ -37,3 +37,12 @@ variable "domain_name" {
 
   type = string
 }
+variable "hop_username" {
+  type      = string
+  sensitive = true
+}
+
+variable "hop_password" {
+  type      = string
+  sensitive = true
+}

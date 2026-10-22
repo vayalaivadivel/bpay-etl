@@ -187,44 +187,19 @@ module "iam" {
 ############################################################
 
 module "hop" {
-  ecs_task_role_arn = module.iam.hop_ecs_task_role_arn
-
-  source = "./modules/hop"
-
-  app_name = local.app_name
-
-  ##########################################################
-  # ENVIRONMENT
-  ##########################################################
-
-  env = var.env
-
-  aws_region = var.aws_region
-
-  ##########################################################
-  # NETWORKING
-  ##########################################################
-
-  vpc_id = module.vpc.vpc_id
-
-  public_subnets = module.vpc.public_subnets
-
-  private_subnets = module.vpc.private_subnets
-
-  ##########################################################
-  # ECS
-  ##########################################################
-
+  ecs_task_role_arn           = module.iam.hop_ecs_task_role_arn
+  source                      = "./modules/hop"
+  app_name                    = local.app_name
+  env                         = var.env
+  aws_region                  = var.aws_region
+  vpc_id                      = module.vpc.vpc_id
+  public_subnets              = module.vpc.public_subnets
+  private_subnets             = module.vpc.private_subnets
   ecs_task_execution_role_arn = module.iam.ecs_task_execution_role_arn
-
-  ##########################################################
-  # ECR
-  ##########################################################
-
-  ecr_repository_url = "518060119469.dkr.ecr.ap-south-1.amazonaws.com/jungle-ecr-images"
-
-  domain_name = var.domain_name
-
+  ecr_repository_url          = "518060119469.dkr.ecr.ap-south-1.amazonaws.com/jungle-ecr-images"
+  domain_name                 = var.domain_name
+  hop_username                = var.hop_username
+  hop_password                = var.hop_password
 }
 
 module "airflow" {
