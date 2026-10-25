@@ -30,6 +30,7 @@ concurrency:
 
 jobs:
   liquibase:
+    name: Liquibase Execution
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
