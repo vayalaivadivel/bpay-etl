@@ -5,7 +5,7 @@
       "databaseName": "bpaydb_raw_dev",
       "pluginId": "MYSQL",
       "accessType": 0,
-      "hostname": "bpay-etl-db-dev.ctuso8me0bks.ap-south-1.rds.amazonaws.com",
+      "hostname": "bpay-etl-db-dev.crygi02amrv8.ap-south-1.rds.amazonaws.com",
       "password": "Encrypted 2be98afc86af19380a20fab7c9fc3fd89",
       "pluginName": "MySQL",
       "port": "3306",
