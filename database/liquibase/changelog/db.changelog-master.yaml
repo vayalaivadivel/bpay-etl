@@ -1,4 +1,4 @@
 databaseChangeLog:
   - include:
-      file: source/002-seed-data.sql
+      file: source/001-seed-data.sql
       relativeToChangelogFile: true
