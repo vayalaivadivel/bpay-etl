@@ -1,0 +1,213 @@
+name: Liquibase-Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        description: "Choose action"
+        required: true
+        type: choice
+        default: validate
+        options:
+          - validate
+          - update
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: liquibase-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  liquibase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+
+    env:
+      AWS_REGION: ap-south-1
+      AWS_DEFAULT_REGION: ap-south-1
+      TF_IN_AUTOMATION: "true"
+      DB_NAME: bpaydb
+      DB_USERNAME: vadivel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y openssh-client mysql-client
+          java -version
+
+
+      - name: Read Terraform outputs
+        working-directory: infra
+        run: |
+          set -euo pipefail
+
+          terraform init -input=false -reconfigure \
+            -backend-config="key=bpay-etl/${{ inputs.environment }}/terraform.tfstate"
+
+          if ! terraform output -raw bastion_public_ip > "$RUNNER_TEMP/bastion_ip" 2>/dev/null; then
+            echo "::error::bastion_public_ip is unavailable. The selected Terraform state may be empty because infrastructure was destroyed."
+            exit 1
+          fi
+
+          if ! terraform output -raw rds_endpoint > "$RUNNER_TEMP/rds_endpoint" 2>/dev/null; then
+            echo "::error::rds_endpoint is unavailable. The selected Terraform state may be empty because infrastructure was destroyed."
+            exit 1
+          fi
+
+          test -s "$RUNNER_TEMP/bastion_ip"
+          test -s "$RUNNER_TEMP/rds_endpoint"
+
+
+      - name: Configure SSH tunnel
+        env:
+          EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$EC2_PRIVATE_KEY" > "$RUNNER_TEMP/bastion.pem"
+          chmod 600 "$RUNNER_TEMP/bastion.pem"
+
+          BASTION_IP="$(cat "$RUNNER_TEMP/bastion_ip")"
+          RDS_ENDPOINT="$(cat "$RUNNER_TEMP/rds_endpoint")"
+
+          ssh-keygen -y -f "$RUNNER_TEMP/bastion.pem" > /dev/null
+
+          ssh -i "$RUNNER_TEMP/bastion.pem" \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -N -f \
+            -L 3307:"${RDS_ENDPOINT}":3306 \
+            ubuntu@"${BASTION_IP}"
+
+          echo "DB_HOST=127.0.0.1" >> "$GITHUB_ENV"
+
+
+      - name: Wait for database tunnel
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$DB_PASSWORD"
+
+          for i in $(seq 1 30); do
+            if MYSQL_PWD="$DB_PASSWORD" mysql \
+              --protocol=TCP -h 127.0.0.1 -P 3307 \
+              -u "$DB_USERNAME" "$DB_NAME" \
+              -e "SELECT 1;" >/dev/null 2>&1; then
+              echo "Database connection is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Could not connect to the database through the SSH tunnel."
+          exit 1
+
+
+      - name: Install Liquibase and MySQL driver
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/liquibase/liquibase/releases/download/v4.31.1/liquibase-4.31.1.tar.gz \
+            -o "$RUNNER_TEMP/liquibase.tar.gz"
+          mkdir -p "$RUNNER_TEMP/liquibase"
+          tar -xzf "$RUNNER_TEMP/liquibase.tar.gz" -C "$RUNNER_TEMP/liquibase"
+
+          test -f hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar
+
+          echo "$RUNNER_TEMP/liquibase" >> "$GITHUB_PATH"
+          echo "LIQUIBASE_HOME=$RUNNER_TEMP/liquibase" >> "$GITHUB_ENV"
+
+      - name: Verify database connection
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$DB_PASSWORD"
+          MYSQL_PWD="$DB_PASSWORD" mysql \
+            --protocol=TCP -h 127.0.0.1 -P 3307 \
+            -u "$DB_USERNAME" "$DB_NAME" \
+            -e "SELECT DATABASE() AS database_name;"
+
+      - name: Liquibase validate
+        if: inputs.action == 'validate'
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          liquibase \
+            --defaults-file=database/liquibase/liquibase.properties \
+            --classpath=hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar \
+            --url="jdbc:mysql://127.0.0.1:3307/${DB_NAME}" \
+            --username="$DB_USERNAME" \
+            --password="$DB_PASSWORD" \
+            --driver=com.mysql.cj.jdbc.Driver \
+            validate
+
+      - name: Liquibase update
+        if: inputs.action == 'update'
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          liquibase \
+            --defaults-file=database/liquibase/liquibase.properties \
+            --classpath=hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar \
+            --url="jdbc:mysql://127.0.0.1:3307/${DB_NAME}" \
+            --username="$DB_USERNAME" \
+            --password="$DB_PASSWORD" \
+            --driver=com.mysql.cj.jdbc.Driver \
+            update
+
+      - name: Verify source seed counts
+        if: inputs.action == 'update'
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          MYSQL_PWD="$DB_PASSWORD" mysql \
+            --protocol=TCP -h 127.0.0.1 -P 3307 \
+            -u "$DB_USERNAME" "$DB_NAME" -e "
+              SELECT 'cardholders' AS table_name, COUNT(*) AS row_count FROM cardholders
+              UNION ALL SELECT 'cards', COUNT(*) FROM cards
+              UNION ALL SELECT 'merchant_categories', COUNT(*) FROM merchant_categories
+              UNION ALL SELECT 'offers', COUNT(*) FROM offers
+              UNION ALL SELECT 'campaigns', COUNT(*) FROM campaigns
+              UNION ALL SELECT 'transactions', COUNT(*) FROM transactions
+              UNION ALL SELECT 'reward_points', COUNT(*) FROM reward_points;
+            "
+
+      - name: Close SSH tunnel
+        if: always()
+        run: |
+          pkill -f 'ssh.*-L 3307:' || true
+          rm -f "$RUNNER_TEMP/bastion.pem"
