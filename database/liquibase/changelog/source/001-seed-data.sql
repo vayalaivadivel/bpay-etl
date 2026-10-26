@@ -64,3 +64,15 @@ VALUES
 (9003,5003,925,0,925,'2026-06-03'),
 (9004,5004,160,0,160,'2026-06-04'),
 (9005,5005,304,0,304,'2026-06-05');
+
+--changeset susmita:008-seed-employees
+CREATE TABLE emp (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(100) NOT NULL,
+    department VARCHAR(50),
+    salary DECIMAL(10, 2)
+);
+
+--changeset susmita:008-seed-employees-insert
+INSERT INTO emp (emp_id, emp_name, department, salary)
+VALUES (1, 'Vadivel', 'IT', 75000.00);
