@@ -51,6 +51,7 @@ jobs:
       # AWS AUTHENTICATION
       # ------------------------------------------------------------
       - name: Configure AWS Credentials
+        id: aws-auth
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
@@ -188,7 +189,7 @@ jobs:
       # VERIFY ECS SERVICE AFTER ETL
       # ------------------------------------------------------------
       - name: Verify Hop Service
-        if: always()
+        if: ${{ always() && steps.aws-auth.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -206,7 +207,7 @@ jobs:
       # SHOW ECS EVENTS ON FAILURE
       # ------------------------------------------------------------
       - name: Show ECS Events
-        if: failure()
+        if: ${{ failure() && steps.aws-auth.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail

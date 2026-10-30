@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset vadivel:001-seed-cardholders
+--changeset vadivel:001-master-1-seed-cardholders
 INSERT INTO cardholders
 (cardholder_id, customer_name, email, mobile, city, state, loyalty_tier, created_date)
 VALUES
