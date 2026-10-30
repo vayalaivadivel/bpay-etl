@@ -26,7 +26,8 @@ jobs:
     name: Apache Hop ETL Execution
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
     env:
       AWS_REGION: ap-south-1
       APP_NAME: bpay-etl
