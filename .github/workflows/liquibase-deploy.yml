@@ -1,6 +1,14 @@
+
 name: Liquibase-Deploy
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'database/liquibase/**'
+      - '.github/workflows/liquibase-deploy.yml'
+
   workflow_dispatch:
     inputs:
       environment:
@@ -15,7 +23,7 @@ on:
         description: "Choose action"
         required: true
         type: choice
-        default: validate
+        default: update
         options:
           - validate
           - update
@@ -25,7 +33,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: liquibase-${{ inputs.environment }}
+  group: liquibase-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,7 +41,8 @@ jobs:
     name: Liquibase Execution
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ inputs.environment }}
+
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
 
     env:
       AWS_REGION: ap-south-1
@@ -41,6 +50,7 @@ jobs:
       TF_IN_AUTOMATION: "true"
       DB_NAME: bpaydb
       DB_USERNAME: vadivel
+      DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
 
     steps:
       - name: Checkout
@@ -64,28 +74,19 @@ jobs:
           sudo apt-get install -y openssh-client mysql-client
           java -version
 
-
       - name: Read Terraform outputs
         working-directory: infra
         run: |
           set -euo pipefail
 
           terraform init -input=false -reconfigure \
-            -backend-config="key=bpay-etl/${{ inputs.environment }}/terraform.tfstate"
+            -backend-config="key=bpay-etl/${DEPLOY_ENV}/terraform.tfstate"
 
-          if ! terraform output -raw bastion_public_ip > "$RUNNER_TEMP/bastion_ip" 2>/dev/null; then
-            echo "::error::bastion_public_ip is unavailable. The selected Terraform state may be empty because infrastructure was destroyed."
-            exit 1
-          fi
-
-          if ! terraform output -raw rds_endpoint > "$RUNNER_TEMP/rds_endpoint" 2>/dev/null; then
-            echo "::error::rds_endpoint is unavailable. The selected Terraform state may be empty because infrastructure was destroyed."
-            exit 1
-          fi
+          terraform output -raw bastion_public_ip > "$RUNNER_TEMP/bastion_ip"
+          terraform output -raw rds_endpoint > "$RUNNER_TEMP/rds_endpoint"
 
           test -s "$RUNNER_TEMP/bastion_ip"
           test -s "$RUNNER_TEMP/rds_endpoint"
-
 
       - name: Configure SSH tunnel
         env:
@@ -93,6 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+
           printf '%s\n' "$EC2_PRIVATE_KEY" > "$RUNNER_TEMP/bastion.pem"
           chmod 600 "$RUNNER_TEMP/bastion.pem"
 
@@ -109,9 +111,6 @@ jobs:
             -N -f \
             -L 3307:"${RDS_ENDPOINT}":3306 \
             ubuntu@"${BASTION_IP}"
-
-          echo "DB_HOST=127.0.0.1" >> "$GITHUB_ENV"
-
 
       - name: Wait for database tunnel
         env:
@@ -131,40 +130,43 @@ jobs:
             sleep 2
           done
 
-          echo "::error::Could not connect to the database through the SSH tunnel."
+          echo "::error::Could not connect to database."
           exit 1
-
 
       - name: Install Liquibase and MySQL driver
         run: |
           set -euo pipefail
-          curl -fsSL https://github.com/liquibase/liquibase/releases/download/v4.31.1/liquibase-4.31.1.tar.gz \
+
+          curl -fsSL \
+            https://github.com/liquibase/liquibase/releases/download/v4.31.1/liquibase-4.31.1.tar.gz \
             -o "$RUNNER_TEMP/liquibase.tar.gz"
+
           mkdir -p "$RUNNER_TEMP/liquibase"
-          tar -xzf "$RUNNER_TEMP/liquibase.tar.gz" -C "$RUNNER_TEMP/liquibase"
+          tar -xzf "$RUNNER_TEMP/liquibase.tar.gz" \
+            -C "$RUNNER_TEMP/liquibase"
 
           test -f hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar
 
           echo "$RUNNER_TEMP/liquibase" >> "$GITHUB_PATH"
-          echo "LIQUIBASE_HOME=$RUNNER_TEMP/liquibase" >> "$GITHUB_ENV"
 
       - name: Verify database connection
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$DB_PASSWORD"
+
           MYSQL_PWD="$DB_PASSWORD" mysql \
             --protocol=TCP -h 127.0.0.1 -P 3307 \
             -u "$DB_USERNAME" "$DB_NAME" \
             -e "SELECT DATABASE() AS database_name;"
 
       - name: Liquibase validate
-        if: inputs.action == 'validate'
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'validate'
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
+
           liquibase \
             --defaults-file=database/liquibase/liquibase.properties \
             --classpath=hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar \
@@ -175,11 +177,12 @@ jobs:
             validate
 
       - name: Liquibase update
-        if: inputs.action == 'update'
+        if: github.event_name == 'push' || inputs.action == 'update'
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
+
           liquibase \
             --defaults-file=database/liquibase/liquibase.properties \
             --classpath=hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar \
@@ -190,11 +193,12 @@ jobs:
             update
 
       - name: Verify source seed counts
-        if: inputs.action == 'update'
+        if: github.event_name == 'push' || inputs.action == 'update'
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
+
           MYSQL_PWD="$DB_PASSWORD" mysql \
             --protocol=TCP -h 127.0.0.1 -P 3307 \
             -u "$DB_USERNAME" "$DB_NAME" -e "
