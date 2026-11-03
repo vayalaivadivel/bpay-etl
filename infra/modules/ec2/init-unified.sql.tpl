@@ -35,16 +35,15 @@ CREATE TABLE IF NOT EXISTS dim_customer (
 
     effective_to DATETIME DEFAULT '9999-12-31 23:59:59',
 
-    current_flag CHAR(1) DEFAULT 'Y',
+    current_flag CHAR(1) NOT NULL DEFAULT 'Y',
 
-    UNIQUE(cardholder_id),
+    INDEX idx_dim_customer_cardholder (cardholder_id),
 
     INDEX idx_dim_customer_tier (loyalty_tier),
 
     INDEX idx_dim_customer_current (current_flag)
 
 );
-
 -- =============================================================================
 -- DIMENSION : CARD
 -- =============================================================================
