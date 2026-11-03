@@ -1,8 +1,6 @@
 --liquibase formatted sql
 
---changeset vadivel:003-create-sp-load-dim-customer splitStatements:false endDelimiter:$$
-
-DROP PROCEDURE IF EXISTS bpaydb_unified_dev.sp_load_dim_customer$$
+--changeset vadivel:003-create-sp-load-dim-customer splitStatements:false
 
 CREATE PROCEDURE bpaydb_unified_dev.sp_load_dim_customer()
 BEGIN
@@ -82,4 +80,4 @@ BEGIN
     DROP TEMPORARY TABLE IF EXISTS tmp_customer;
 
     COMMIT;
-END$$
+END
