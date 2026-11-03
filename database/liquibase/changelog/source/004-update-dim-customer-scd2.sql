@@ -3,9 +3,6 @@
 --changeset vadivel:004-update-dim-customer-scd2
 
 ALTER TABLE bpaydb_unified_dev.dim_customer
-    DROP INDEX cardholder_id;
-
-ALTER TABLE bpaydb_unified_dev.dim_customer
     MODIFY current_flag CHAR(1) NOT NULL DEFAULT 'Y';
 
 ALTER TABLE bpaydb_unified_dev.dim_customer
