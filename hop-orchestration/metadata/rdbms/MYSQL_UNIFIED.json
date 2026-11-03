@@ -1,0 +1,32 @@
+{
+  "virtualPath": "",
+  "rdbms": {
+    "MYSQL": {
+      "databaseName": "bpaydb_unified_dev",
+      "pluginId": "MYSQL",
+      "accessType": 0,
+      "hostname": "bpay-etl-db-dev.crygi02amrv8.ap-south-1.rds.amazonaws.com",
+      "password": "Encrypted 2be98afc86af19380a20fab7c9fc3fd89",
+      "pluginName": "MySQL",
+      "port": "3306",
+      "driverClassName": "Mysql 8+",
+      "attributes": {
+        "SUPPORTS_TIMESTAMP_DATA_TYPE": "Y",
+        "QUOTE_ALL_FIELDS": "N",
+        "STREAM_RESULTS": "N",
+        "EXTRA_OPTION_MYSQL.zeroDateTimeBehaviorValue": "CONVERT_TO_NULL",
+        "EXTRA_OPTION_MYSQL.useCursorFetch": "true",
+        "EXTRA_OPTION_MYSQL.defaultFetchSize": "500",
+        "SUPPORTS_BOOLEAN_DATA_TYPE": "Y",
+        "FORCE_IDENTIFIERS_TO_LOWERCASE": "N",
+        "PRESERVE_RESERVED_WORD_CASE": "Y",
+        "SQL_CONNECT": "",
+        "FORCE_IDENTIFIERS_TO_UPPERCASE": "N",
+        "PREFERRED_SCHEMA_NAME": ""
+      },
+      "manualUrl": "",
+      "username": "vadivel"
+    }
+  },
+  "name": "MYSQL_UNIFIED"
+}
