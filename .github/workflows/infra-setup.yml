@@ -290,11 +290,11 @@ jobs:
           echo "Terraform Outputs"
           echo "======================================"
           terraform output
-      # UPDATE GITHUB ENVIRONMENT VARIABLES
-      - name: Update GitHub Environment Variables
+          
+      # UPDATE AWS PARAMETER STORE
+      - name: Update Infrastructure Parameters
         if: inputs.action == 'apply'
         env:
-          GH_TOKEN: ${{ secrets.GH_ENV_UPDATE_TOKEN }}
           DEPLOY_ENV: ${{ inputs.environment }}
         run: |
           set -euo pipefail
@@ -302,24 +302,21 @@ jobs:
           BASTION_IP=$(terraform output -raw bastion_public_ip)
           RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
 
-          test -n "$BASTION_IP"
-          test -n "$RDS_ENDPOINT"
+          aws ssm put-parameter \
+            --name "/bpay-etl/${DEPLOY_ENV}/bastion-public-ip" \
+            --type String \
+            --value "$BASTION_IP" \
+            --overwrite \
+            --region "$AWS_REGION"
 
-          echo "Updating GitHub environment: $DEPLOY_ENV"
+          aws ssm put-parameter \
+            --name "/bpay-etl/${DEPLOY_ENV}/rds-endpoint" \
+            --type String \
+            --value "$RDS_ENDPOINT" \
+            --overwrite \
+            --region "$AWS_REGION"
 
-          gh api \
-            --method PUT \
-            "repos/${GITHUB_REPOSITORY}/environments/${DEPLOY_ENV}/variables/BASTION_PUBLIC_IP" \
-            -f name="BASTION_PUBLIC_IP" \
-            -f value="$BASTION_IP"
-
-          gh api \
-            --method PUT \
-            "repos/${GITHUB_REPOSITORY}/environments/${DEPLOY_ENV}/variables/RDS_ENDPOINT" \
-            -f name="RDS_ENDPOINT" \
-            -f value="$RDS_ENDPOINT"
-
-          echo "GitHub environment variables updated successfully."
+          echo "Infrastructure parameters updated successfully."
 
       # TERRAFORM DESTROY APPLY
       - name: Terraform Destroy Apply
