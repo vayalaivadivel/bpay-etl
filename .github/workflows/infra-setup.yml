@@ -149,12 +149,27 @@ jobs:
         run: terraform version
 
       # TERRAFORM INIT
+     
       - name: Terraform Init
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        working-directory: infra
+        shell: bash
         run: |
-          set -euo pipefail
-          terraform init -reconfigure \
-            -backend-config="key=bpay-etl/${{ github.event.inputs.environment }}/terraform.tfstate"
+          for attempt in 1 2 3 4; do
+            echo "Terraform init attempt $attempt"
+
+            if terraform init -input=false -reconfigure \
+              -backend-config="key=bpay-etl/dev/terraform.tfstate"; then
+              echo "Terraform initialization successful"
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 4 ]; then
+              echo "Terraform initialization failed after 4 attempts"
+              exit 1
+            fi
+
+            sleep $((attempt * 20))
+          done
 
       # TERRAFORM VALIDATE
       - name: Terraform Validate
