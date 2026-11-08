@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'database/liquibase/**'
-      - '.github/workflows/liquibase-deploy.yml'
 
   workflow_dispatch:
     inputs:
@@ -18,6 +17,7 @@ on:
           - dev
           - staging
           - prod
+
       action:
         description: "Choose action"
         required: true
@@ -47,7 +47,6 @@ jobs:
       DB_USERNAME: vadivel
       DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
 
-      # GitHub Environment Variables
       BASTION_IP: ${{ vars.BASTION_PUBLIC_IP }}
       RDS_ENDPOINT: ${{ vars.RDS_ENDPOINT }}
 
@@ -64,6 +63,8 @@ jobs:
       # ==========================================================
 
       - name: Validate deployment configuration
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -77,98 +78,47 @@ jobs:
             exit 1
           }
 
+          test -n "$DB_PASSWORD" || {
+            echo "::error::DB_PASSWORD is not configured."
+            exit 1
+          }
+
+          test -n "$DB_USERNAME" || {
+            echo "::error::DB_USERNAME is not configured."
+            exit 1
+          }
+
           echo "Environment: $DEPLOY_ENV"
           echo "Database: $DB_NAME"
-          echo "Bastion IP and RDS endpoint are configured."
+          echo "Bastion and RDS configuration verified."
 
       # ==========================================================
-      # INSTALL REQUIRED TOOLS
+      # INSTALL JAVA 21
       # ==========================================================
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
+
+      # ==========================================================
+      # INSTALL REQUIRED TOOLS
+      # ==========================================================
 
       - name: Install tools
         run: |
           set -euo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y openssh-client mysql-client
+
+          sudo apt-get install -y \
+            openssh-client \
+            mysql-client
 
           java -version
           mysql --version
           ssh -V
-
-      # ==========================================================
-      # CONFIGURE SSH TUNNEL
-      # ==========================================================
-
-      - name: Configure SSH tunnel
-        env:
-          EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-
-          test -n "$EC2_PRIVATE_KEY"
-
-          printf '%s\n' "$EC2_PRIVATE_KEY" \
-            > "$RUNNER_TEMP/bastion.pem"
-
-          chmod 600 "$RUNNER_TEMP/bastion.pem"
-
-          ssh-keygen -y \
-            -f "$RUNNER_TEMP/bastion.pem" > /dev/null
-
-          ssh -i "$RUNNER_TEMP/bastion.pem" \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=15 \
-            -o ExitOnForwardFailure=yes \
-            -o ServerAliveInterval=30 \
-            -N \
-            -L 3307:"${RDS_ENDPOINT}":3306 \
-            ubuntu@"${BASTION_IP}" &
-
-          SSH_PID=$!
-
-          echo "$SSH_PID" > "$RUNNER_TEMP/ssh-tunnel.pid"
-
-          echo "SSH tunnel process started."
-
-      # ==========================================================
-      # WAIT FOR DATABASE TUNNEL
-      # ==========================================================
-
-      - name: Wait for database tunnel
-        env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          test -n "$DB_PASSWORD"
-
-          for i in $(seq 1 30); do
-
-            if MYSQL_PWD="$DB_PASSWORD" mysql \
-              --protocol=TCP \
-              -h 127.0.0.1 \
-              -P 3307 \
-              -u "$DB_USERNAME" \
-              "$DB_NAME" \
-              -e "SELECT 1;" >/dev/null 2>&1; then
-
-              echo "Database connection is ready."
-              exit 0
-            fi
-
-            sleep 2
-          done
-
-          echo "::error::Could not connect to database."
-          exit 1
 
       # ==========================================================
       # INSTALL LIQUIBASE AND MYSQL DRIVER
@@ -187,9 +137,94 @@ jobs:
           tar -xzf "$RUNNER_TEMP/liquibase.tar.gz" \
             -C "$RUNNER_TEMP/liquibase"
 
+          test -x "$RUNNER_TEMP/liquibase/liquibase"
+
           test -f hop-orchestration/jdbc/mysql-connector-j-9.4.0.jar
 
           echo "$RUNNER_TEMP/liquibase" >> "$GITHUB_PATH"
+
+          "$RUNNER_TEMP/liquibase/liquibase" --version
+
+          echo "Liquibase and MySQL JDBC driver verified."
+
+      # ==========================================================
+      # CONFIGURE SSH TUNNEL
+      # ==========================================================
+
+      - name: Configure SSH tunnel
+        env:
+          EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          umask 077
+
+          test -n "$EC2_PRIVATE_KEY"
+
+          printf '%s\n' "$EC2_PRIVATE_KEY" \
+            > "$RUNNER_TEMP/bastion.pem"
+
+          chmod 600 "$RUNNER_TEMP/bastion.pem"
+
+          ssh-keygen -y \
+            -f "$RUNNER_TEMP/bastion.pem" > /dev/null
+
+          ssh -i "$RUNNER_TEMP/bastion.pem" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=3 \
+            -N \
+            -L 3307:"${RDS_ENDPOINT}":3306 \
+            ubuntu@"${BASTION_IP}" &
+
+          SSH_PID=$!
+
+          echo "$SSH_PID" > "$RUNNER_TEMP/ssh-tunnel.pid"
+
+          echo "SSH tunnel started with PID: $SSH_PID"
+
+      # ==========================================================
+      # WAIT FOR DATABASE TUNNEL
+      # ==========================================================
+
+      - name: Wait for database tunnel
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for i in $(seq 1 30); do
+
+            SSH_PID="$(cat "$RUNNER_TEMP/ssh-tunnel.pid")"
+
+            if ! kill -0 "$SSH_PID" 2>/dev/null; then
+              echo "::error::SSH tunnel process has exited."
+              exit 1
+            fi
+
+            if MYSQL_PWD="$DB_PASSWORD" mysql \
+              --protocol=TCP \
+              -h 127.0.0.1 \
+              -P 3307 \
+              -u "$DB_USERNAME" \
+              "$DB_NAME" \
+              -e "SELECT 1;" >/dev/null 2>&1; then
+
+              echo "Database connection is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "::error::Could not connect to database through SSH tunnel."
+          exit 1
 
       # ==========================================================
       # VERIFY DATABASE CONNECTION
@@ -207,7 +242,12 @@ jobs:
             -P 3307 \
             -u "$DB_USERNAME" \
             "$DB_NAME" \
-            -e "SELECT DATABASE() AS database_name;"
+            -e "
+              SELECT
+                DATABASE() AS database_name,
+                CURRENT_USER() AS database_user,
+                VERSION() AS mysql_version;
+            "
 
       # ==========================================================
       # LIQUIBASE VALIDATE
@@ -282,12 +322,15 @@ jobs:
 
       - name: Close SSH tunnel
         if: always()
+        shell: bash
         run: |
           set +e
 
           if [ -f "$RUNNER_TEMP/ssh-tunnel.pid" ]; then
             SSH_PID="$(cat "$RUNNER_TEMP/ssh-tunnel.pid")"
+
             kill "$SSH_PID" 2>/dev/null || true
+
             rm -f "$RUNNER_TEMP/ssh-tunnel.pid"
           fi
 
