@@ -1,6 +1,8 @@
+
 -- =============================================================================
 -- BPAY ETL - UNIFIED DATA WAREHOUSE INITIALIZATION
 -- Gold Layer (Star Schema)
+-- Includes Customer SCD Type 2 Stored Procedure
 -- =============================================================================
 
 USE ${unified_db_name};
@@ -9,6 +11,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- =============================================================================
 -- DIMENSION : CUSTOMER
+-- SCD TYPE 2 ENABLED
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS dim_customer (
@@ -37,13 +40,24 @@ CREATE TABLE IF NOT EXISTS dim_customer (
 
     current_flag CHAR(1) NOT NULL DEFAULT 'Y',
 
+    current_customer_id INT
+        GENERATED ALWAYS AS (
+            CASE
+                WHEN current_flag = 'Y' THEN cardholder_id
+                ELSE NULL
+            END
+        ) STORED,
+
     INDEX idx_dim_customer_cardholder (cardholder_id),
 
     INDEX idx_dim_customer_tier (loyalty_tier),
 
-    INDEX idx_dim_customer_current (current_flag)
+    INDEX idx_dim_customer_current (current_flag),
 
-);
+    UNIQUE KEY uk_customer_current (current_customer_id)
+
+) ENGINE=InnoDB;
+
 -- =============================================================================
 -- DIMENSION : CARD
 -- =============================================================================
@@ -78,7 +92,7 @@ CREATE TABLE IF NOT EXISTS dim_card (
         FOREIGN KEY(customer_key)
         REFERENCES dim_customer(customer_key)
 
-);
+) ENGINE=InnoDB;
 
 -- =============================================================================
 -- DIMENSION : MERCHANT
@@ -100,7 +114,7 @@ CREATE TABLE IF NOT EXISTS dim_merchant (
 
     INDEX idx_dim_merchant_category (category_id)
 
-);
+) ENGINE=InnoDB;
 
 -- =============================================================================
 -- DIMENSION : OFFER
@@ -132,7 +146,7 @@ CREATE TABLE IF NOT EXISTS dim_offer (
 
     INDEX idx_dim_offer_dates (start_date, end_date)
 
-);
+) ENGINE=InnoDB;
 
 -- =============================================================================
 -- DIMENSION : CAMPAIGN
@@ -160,7 +174,7 @@ CREATE TABLE IF NOT EXISTS dim_campaign (
 
     INDEX idx_dim_campaign_dates (start_date, end_date)
 
-);
+) ENGINE=InnoDB;
 
 -- =============================================================================
 -- DIMENSION : DATE
@@ -192,7 +206,7 @@ CREATE TABLE IF NOT EXISTS dim_date (
 
     INDEX idx_dim_date_quarter (quarter_number)
 
-);
+) ENGINE=InnoDB;
 
 -- =============================================================================
 -- FACT : REWARD TRANSACTION
@@ -258,7 +272,7 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
         FOREIGN KEY(campaign_key)
         REFERENCES dim_campaign(campaign_key)
 
-);
+) ENGINE=InnoDB;
 
 CREATE INDEX idx_fact_reward_transaction_date
 ON fact_reward_transaction(date_key);
@@ -312,7 +326,7 @@ CREATE TABLE IF NOT EXISTS fact_reward_balance (
         FOREIGN KEY(date_key)
         REFERENCES dim_date(date_key)
 
-);
+) ENGINE=InnoDB;
 
 CREATE INDEX idx_fact_reward_balance_customer
 ON fact_reward_balance(customer_key);
@@ -353,7 +367,7 @@ CREATE TABLE IF NOT EXISTS fact_campaign_performance (
         FOREIGN KEY(date_key)
         REFERENCES dim_date(date_key)
 
-);
+) ENGINE=InnoDB;
 
 CREATE INDEX idx_fact_campaign_performance_campaign
 ON fact_campaign_performance(campaign_key);
@@ -364,4 +378,110 @@ ON fact_campaign_performance(date_key);
 CREATE INDEX idx_fact_campaign_performance_load
 ON fact_campaign_performance(load_timestamp);
 
+-- =============================================================================
+-- STORED PROCEDURE : CUSTOMER SCD TYPE 2
+-- =============================================================================
+
+DROP PROCEDURE IF EXISTS sp_load_dim_customer;
+
+DELIMITER $$
+
+CREATE PROCEDURE sp_load_dim_customer()
+BEGIN
+
+    DECLARE v_load_time DATETIME DEFAULT CURRENT_TIMESTAMP;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_customer;
+
+    CREATE TEMPORARY TABLE tmp_customer AS
+    SELECT
+        cardholder_id,
+        customer_name,
+        email,
+        mobile,
+        city,
+        state,
+        loyalty_tier,
+        created_date
+    FROM bpaydb_replicated_dev.cardholders;
+
+    -- ==========================================================
+    -- EXPIRE CHANGED CUSTOMER RECORDS
+    -- ==========================================================
+
+    UPDATE dim_customer d
+    JOIN tmp_customer s
+        ON d.cardholder_id = s.cardholder_id
+    SET
+        d.effective_to = v_load_time,
+        d.current_flag = 'N'
+    WHERE d.current_flag = 'Y'
+      AND (
+          NOT (d.customer_name <=> s.customer_name)
+          OR NOT (d.email <=> s.email)
+          OR NOT (d.mobile <=> s.mobile)
+          OR NOT (d.city <=> s.city)
+          OR NOT (d.state <=> s.state)
+          OR NOT (d.loyalty_tier <=> s.loyalty_tier)
+      );
+
+    -- ==========================================================
+    -- INSERT NEW CUSTOMERS AND CHANGED CUSTOMER VERSIONS
+    -- ==========================================================
+
+    INSERT INTO dim_customer (
+        cardholder_id,
+        customer_name,
+        email,
+        mobile,
+        city,
+        state,
+        loyalty_tier,
+        created_date,
+        effective_from,
+        effective_to,
+        current_flag
+    )
+    SELECT
+        s.cardholder_id,
+        s.customer_name,
+        s.email,
+        s.mobile,
+        s.city,
+        s.state,
+        s.loyalty_tier,
+        s.created_date,
+        v_load_time,
+        '9999-12-31 23:59:59',
+        'Y'
+    FROM tmp_customer s
+    LEFT JOIN dim_customer d
+        ON d.cardholder_id = s.cardholder_id
+       AND d.current_flag = 'Y'
+    WHERE d.customer_key IS NULL;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_customer;
+
+    COMMIT;
+
+END$$
+
+DELIMITER ;
+
+-- =============================================================================
+-- RESTORE FOREIGN KEY CHECKS
+-- =============================================================================
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- =============================================================================
+-- END OF UNIFIED DATA WAREHOUSE INITIALIZATION
+-- =============================================================================
