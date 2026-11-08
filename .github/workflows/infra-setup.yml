@@ -290,6 +290,36 @@ jobs:
           echo "Terraform Outputs"
           echo "======================================"
           terraform output
+      # UPDATE GITHUB ENVIRONMENT VARIABLES
+      - name: Update GitHub Environment Variables
+        if: inputs.action == 'apply'
+        env:
+          GH_TOKEN: ${{ secrets.GH_ENV_UPDATE_TOKEN }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          BASTION_IP=$(terraform output -raw bastion_public_ip)
+          RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
+
+          test -n "$BASTION_IP"
+          test -n "$RDS_ENDPOINT"
+
+          echo "Updating GitHub environment: $DEPLOY_ENV"
+
+          gh api \
+            --method PUT \
+            "repos/${GITHUB_REPOSITORY}/environments/${DEPLOY_ENV}/variables/BASTION_PUBLIC_IP" \
+            -f name="BASTION_PUBLIC_IP" \
+            -f value="$BASTION_IP"
+
+          gh api \
+            --method PUT \
+            "repos/${GITHUB_REPOSITORY}/environments/${DEPLOY_ENV}/variables/RDS_ENDPOINT" \
+            -f name="RDS_ENDPOINT" \
+            -f value="$RDS_ENDPOINT"
+
+          echo "GitHub environment variables updated successfully."
 
       # TERRAFORM DESTROY APPLY
       - name: Terraform Destroy Apply
