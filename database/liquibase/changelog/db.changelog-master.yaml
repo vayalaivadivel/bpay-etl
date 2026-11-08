@@ -2,9 +2,3 @@ databaseChangeLog:
   - include:
       file: source/001-seed-data.sql
       relativeToChangelogFile: true
-  - include:
-      file: source/003-create-sp-load-dim-customer.sql
-      relativeToChangelogFile: true
-  - include:
-      file: source/004-update-dim-customer-scd2.sql
-      relativeToChangelogFile: true
