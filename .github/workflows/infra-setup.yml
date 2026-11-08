@@ -97,6 +97,11 @@ jobs:
             --prefix "bpay-etl/${{ github.event.inputs.environment }}/" \
             --max-keys 5
 
+          echo "Checking provider mirror object..."
+          aws s3api head-object \
+            --bucket jungle-terraform-bucket \
+            --key bpay-etl/providers/databricks/terraform-provider-databricks_1.114.2_linux_amd64.zip
+
           echo "Checking shared ECR repository..."
           aws ecr describe-repositories \
             --repository-names jungle-ecr-images \
@@ -107,7 +112,7 @@ jobs:
             --repository-name jungle-ecr-images \
             --region ap-south-1
 
-          echo "AWS identity, S3 backend, and ECR access verified."
+          echo "AWS identity, S3 backend, provider mirror and ECR access verified."
 
       # INSTALL MYSQL CLIENT
       - name: Install MySQL Client
@@ -144,27 +149,81 @@ jobs:
           terraform_version: 1.7.5
           terraform_wrapper: false
 
+      # VERIFY TERRAFORM
       - name: Verify Terraform Installation
         if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
         run: terraform version
 
-      # TERRAFORM INIT
-     
-      - name: Terraform Init
-        working-directory: infra
+      # DOWNLOAD DATABRICKS PROVIDER MIRROR
+      - name: Download Databricks Provider Mirror
+        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
         shell: bash
         run: |
+          set -euo pipefail
+
+          MIRROR_DIR="$RUNNER_TEMP/terraform-mirror"
+
+          PROVIDER_DIR="$MIRROR_DIR/registry.terraform.io/databricks/databricks"
+
+          mkdir -p "$PROVIDER_DIR"
+
+          aws s3 cp \
+            s3://jungle-terraform-bucket/bpay-etl/providers/databricks/terraform-provider-databricks_1.114.2_linux_amd64.zip \
+            "$PROVIDER_DIR/terraform-provider-databricks_1.114.2_linux_amd64.zip" \
+            --region "$AWS_REGION"
+
+          echo "MIRROR_DIR=$MIRROR_DIR" >> "$GITHUB_ENV"
+
+          echo "Databricks provider mirror downloaded successfully."
+
+      # CONFIGURE TERRAFORM PROVIDER MIRROR
+      - name: Configure Terraform Provider Mirror
+        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/terraformrc" <<EOF
+          provider_installation {
+            filesystem_mirror {
+              path    = "$MIRROR_DIR"
+              include = ["registry.terraform.io/databricks/databricks"]
+            }
+
+            direct {
+              exclude = ["registry.terraform.io/databricks/databricks"]
+            }
+          }
+          EOF
+
+          echo "TF_CLI_CONFIG_FILE=$RUNNER_TEMP/terraformrc" >> "$GITHUB_ENV"
+
+          echo "Terraform filesystem mirror configured."
+
+      # TERRAFORM INIT
+      - name: Terraform Init
+        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATE_KEY="bpay-etl/${{ github.event.inputs.environment }}/terraform.tfstate"
+
           for attempt in 1 2 3 4; do
             echo "Terraform init attempt $attempt"
 
-            if terraform init -input=false -reconfigure \
-              -backend-config="key=bpay-etl/dev/terraform.tfstate"; then
-              echo "Terraform initialization successful"
+            if terraform init \
+              -input=false \
+              -reconfigure \
+              -lockfile=readonly \
+              -backend-config="key=${STATE_KEY}"; then
+
+              echo "Terraform initialization successful."
               exit 0
             fi
 
             if [ "$attempt" -eq 4 ]; then
-              echo "Terraform initialization failed after 4 attempts"
+              echo "Terraform initialization failed after 4 attempts."
               exit 1
             fi
 
@@ -183,14 +242,32 @@ jobs:
 
       # TERRAFORM PLAN
       - name: Terraform Plan
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply"]'), github.event.inputs.action)
+        shell: bash
         run: |
           set -euo pipefail
+
           terraform plan \
             -parallelism=20 \
             -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
             -var="private_key_path=bastion-key.pem" \
             -out=tfplan
+
+      # TERRAFORM DESTROY PLAN
+      - name: Terraform Destroy Plan
+        if: github.event.inputs.action == 'destroy'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform plan \
+            -destroy \
+            -parallelism=20 \
+            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
+            -var="private_key_path=bastion-key.pem" \
+            -out=tfplan
+
+          echo "Destroy plan generated successfully."
 
       # VERIFY RENDERED SQL
       - name: Verify rendered SQL
@@ -214,17 +291,17 @@ jobs:
           echo "======================================"
           terraform output
 
-      # TERRAFORM DESTROY
-      - name: Terraform Destroy
+      # TERRAFORM DESTROY APPLY
+      - name: Terraform Destroy Apply
         if: github.event.inputs.action == 'destroy'
         shell: bash
         run: |
           set -euo pipefail
-          terraform destroy \
-            -parallelism=20 \
+
+          terraform apply \
             -auto-approve \
-            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
-            -var="private_key_path=bastion-key.pem"
+            tfplan
+
           echo "Terraform destroy completed successfully."
 
       # DELETE ENVIRONMENT-SPECIFIC ECR IMAGES
@@ -261,6 +338,7 @@ jobs:
             fi
 
             echo "Deleting image tag: ${image_tag}"
+
             response=$(aws ecr batch-delete-image \
               --repository-name "${ECR_REPOSITORY}" \
               --image-ids "imageTag=${image_tag}" \
@@ -268,6 +346,7 @@ jobs:
               --output json)
 
             echo "${response}" | jq .
+
             failure_count=$(echo "${response}" | jq '.failures | length')
 
             if [[ "${failure_count}" -gt 0 ]]; then
