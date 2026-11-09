@@ -369,7 +369,10 @@ CREATE TABLE IF NOT EXISTS fact_campaign_performance (
 
     CONSTRAINT fk_campaign_perf_date
         FOREIGN KEY(date_key)
-        REFERENCES dim_date(date_key)
+        REFERENCES dim_date(date_key),
+        
+    CONSTRAINT uk_fact_campaign_performance_campaign_date
+    UNIQUE (campaign_key, date_key),
 
 ) ENGINE=InnoDB;
 
