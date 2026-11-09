@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>dim_campaign</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <description>Load unified campaign dimension</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters></parameters>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit>100</transform_performance_capturing_size_limit>
+    <created_user>-</created_user>
+    <created_date>2026/11/09 00:00:00.000</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2026/11/09 00:00:00.000</modified_date>
+  </info>
+  <notepads></notepads>
+  <order>
+    <hop>
+      <from>Read New Campaigns</from>
+      <to>Insert Campaigns</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <transform>
+    <name>Read New Campaigns</name>
+    <type>TableInput</type>
+    <description>Read campaigns not yet loaded into unified dimension</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>MYSQL_REPLICATED</connection>
+    <execute_each_row>N</execute_each_row>
+    <limit>0</limit>
+    <sql>SELECT
+    c.campaign_id,
+    c.campaign_name,
+    c.campaign_type,
+    c.start_date,
+    c.end_date,
+    c.campaign_status
+FROM bpaydb_replicated_dev.campaigns c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM bpaydb_unified_dev.dim_campaign existing
+    WHERE existing.campaign_id = c.campaign_id
+)
+ORDER BY c.campaign_id;</sql>
+    <variables_active>N</variables_active>
+    <attributes/>
+    <GUI>
+      <xloc>160</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Insert Campaigns</name>
+    <type>TableOutput</type>
+    <description>Insert new campaigns into unified dimension</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <commit>1000</commit>
+    <connection>MYSQL_UNIFIED</connection>
+    <fields></fields>
+    <ignore_errors>N</ignore_errors>
+    <only_when_have_rows>N</only_when_have_rows>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_monthly>N</partitioning_monthly>
+    <return_keys>N</return_keys>
+    <specify_fields>N</specify_fields>
+    <table>dim_campaign</table>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_in_table>Y</tablename_in_table>
+    <truncate>N</truncate>
+    <use_batch>Y</use_batch>
+    <attributes/>
+    <GUI>
+      <xloc>480</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform_error_handling></transform_error_handling>
+  <attributes/>
+</pipeline>
