@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {"rule-type":"selection","rule-id":"1","rule-name":"cardholders","object-locator":{"schema-name":"bpaydb","table-name":"cardholders"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"2","rule-name":"cards","object-locator":{"schema-name":"bpaydb","table-name":"cards"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"3","rule-name":"merchant_categories","object-locator":{"schema-name":"bpaydb","table-name":"merchant_categories"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"4","rule-name":"offers","object-locator":{"schema-name":"bpaydb","table-name":"offers"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"5","rule-name":"campaigns","object-locator":{"schema-name":"bpaydb","table-name":"campaigns"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"6","rule-name":"transactions","object-locator":{"schema-name":"bpaydb","table-name":"transactions"},"rule-action":"include"},
+    {"rule-type":"selection","rule-id":"7","rule-name":"reward_points","object-locator":{"schema-name":"bpaydb","table-name":"reward_points"},"rule-action":"include"}
+  ]
+}
