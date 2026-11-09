@@ -1,0 +1,433 @@
+---
+name: DMS-Execution
+
+"on":
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dms-execution-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+  TF_VERSION: "1.7.5"
+
+jobs:
+  ############################################
+  # STAGE 1 - DISCOVER DMS RESOURCES
+  ############################################
+  discover-dms:
+    name: "Stage 1 - Discover DMS Resources"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    outputs:
+      task_arn: ${{ steps.dms.outputs.task_arn }}
+      instance_arn: ${{ steps.dms.outputs.instance_arn }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate environment input
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.environment }}" in
+            dev|staging|prod) ;;
+            *)
+              echo "ERROR: Unsupported environment."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Download Databricks provider mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MIRROR_DIR="$RUNNER_TEMP/terraform-mirror"
+          PROVIDER_DIR="$MIRROR_DIR/registry.terraform.io/databricks/databricks/1.114.2/linux_amd64"
+
+          mkdir -p "$PROVIDER_DIR"
+
+          aws s3 cp \
+            s3://jungle-terraform-bucket/bpay-etl/providers/databricks/terraform-provider-databricks_1.114.2_linux_amd64.zip \
+            "$PROVIDER_DIR/terraform-provider-databricks_1.114.2_linux_amd64.zip" \
+            --region "$AWS_REGION"
+
+          echo "MIRROR_DIR=$MIRROR_DIR" >> "$GITHUB_ENV"
+
+      - name: Configure Terraform provider mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/terraformrc" <<EOF
+          provider_installation {
+            filesystem_mirror {
+              path    = "$MIRROR_DIR"
+              include = ["registry.terraform.io/databricks/databricks"]
+            }
+
+            direct {
+              exclude = ["registry.terraform.io/databricks/databricks"]
+            }
+          }
+          EOF
+
+          echo "TF_CLI_CONFIG_FILE=$RUNNER_TEMP/terraformrc" >> "$GITHUB_ENV"
+
+      - name: Terraform init
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          STATE_KEY="bpay-etl/${DEPLOY_ENV}/terraform.tfstate"
+
+          for attempt in 1 2 3 4; do
+            echo "Terraform init attempt ${attempt}"
+
+            if terraform -chdir=infra init \
+              -input=false \
+              -reconfigure \
+              -lockfile=readonly \
+              -backend-config="bucket=jungle-terraform-bucket" \
+              -backend-config="key=${STATE_KEY}" \
+              -backend-config="region=${AWS_REGION}" \
+              -backend-config="dynamodb_table=jungle-terraform-lock" \
+              -backend-config="encrypt=true"; then
+              echo "Terraform initialization successful."
+              exit 0
+            fi
+
+            if [[ "$attempt" -eq 4 ]]; then
+              echo "ERROR: Terraform init failed after four attempts."
+              exit 1
+            fi
+
+            sleep 15
+          done
+
+      - name: Read DMS Terraform outputs
+        id: dms
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_ARN="$(terraform -chdir=infra output -raw dms_replication_task_arn)"
+          INSTANCE_ARN="$(terraform -chdir=infra output -raw dms_replication_instance_arn)"
+
+          if [[ -z "$TASK_ARN" || "$TASK_ARN" == "null" ||
+                -z "$INSTANCE_ARN" || "$INSTANCE_ARN" == "null" ]]; then
+            echo "ERROR: DMS Terraform outputs are missing or empty."
+            exit 1
+          fi
+
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+          echo "instance_arn=$INSTANCE_ARN" >> "$GITHUB_OUTPUT"
+
+          echo "DMS task and replication instance ARNs retrieved from Terraform state."
+
+  ############################################
+  # STAGE 2 - VERIFY REPLICATION INSTANCE
+  ############################################
+  verify-dms-instance:
+    name: "Stage 2 - Verify DMS Instance"
+    runs-on: ubuntu-latest
+    needs: discover-dms
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for DMS instance availability
+        shell: bash
+        env:
+          INSTANCE_ARN: ${{ needs.discover-dms.outputs.instance_arn }}
+        run: |
+          set -euo pipefail
+
+          echo "Checking DMS replication instance..."
+
+          for attempt in $(seq 1 30); do
+            STATUS="$(aws dms describe-replication-instances \
+              --filters "Name=replication-instance-arn,Values=${INSTANCE_ARN}" \
+              --query 'ReplicationInstances[0].ReplicationInstanceStatus' \
+              --output text)"
+
+            echo "Attempt ${attempt}/30: DMS instance status = ${STATUS}"
+
+            if [[ "$STATUS" == "available" ]]; then
+              echo "DMS replication instance is available."
+              exit 0
+            fi
+
+            if [[ "$STATUS" == "failed" || "$STATUS" == "deleted" ||
+                  "$STATUS" == "None" ]]; then
+              echo "ERROR: DMS replication instance is in an unusable state: ${STATUS}"
+              exit 1
+            fi
+
+            sleep 60
+          done
+
+          echo "ERROR: DMS instance did not become available within 30 minutes."
+          exit 1
+
+  ############################################
+  # STAGE 3 - START DMS REPLICATION
+  ############################################
+  start-dms:
+    name: "Stage 3 - Start DMS Replication"
+    runs-on: ubuntu-latest
+    needs:
+      - discover-dms
+      - verify-dms-instance
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Start or resume DMS task
+        shell: bash
+        env:
+          TASK_ARN: ${{ needs.discover-dms.outputs.task_arn }}
+        run: |
+          set -euo pipefail
+
+          STATUS="$(aws dms describe-replication-tasks \
+            --filters "Name=replication-task-arn,Values=${TASK_ARN}" \
+            --query 'ReplicationTasks[0].Status' \
+            --output text)"
+
+          echo "Current DMS task status: ${STATUS}"
+
+          case "$STATUS" in
+            ready)
+              echo "Starting initial full load and CDC."
+              aws dms start-replication \
+                --replication-task-arn "$TASK_ARN" \
+                --start-replication-type start-replication
+              ;;
+            stopped)
+              echo "Resuming the existing DMS replication task."
+              aws dms start-replication \
+                --replication-task-arn "$TASK_ARN" \
+                --start-replication-type resume-processing
+              ;;
+            starting|running)
+              echo "DMS task is already starting or running; no start command is needed."
+              ;;
+            *)
+              echo "ERROR: DMS task cannot be started from status: ${STATUS}"
+              echo "No automatic reload or restart will be attempted."
+              exit 1
+              ;;
+          esac
+
+  ############################################
+  # STAGE 4 - MONITOR FULL LOAD
+  ############################################
+  monitor-full-load:
+    name: "Stage 4 - Monitor Full Load"
+    runs-on: ubuntu-latest
+    needs:
+      - discover-dms
+      - start-dms
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Monitor DMS full-load table statistics
+        shell: bash
+        env:
+          TASK_ARN: ${{ needs.discover-dms.outputs.task_arn }}
+        run: |
+          set -euo pipefail
+
+          echo "Monitoring DMS full-load progress..."
+          DEADLINE=$((SECONDS + 10800))
+
+          while (( SECONDS < DEADLINE )); do
+            TASK_STATUS="$(aws dms describe-replication-tasks \
+              --filters "Name=replication-task-arn,Values=${TASK_ARN}" \
+              --query 'ReplicationTasks[0].Status' \
+              --output text)"
+
+            echo "DMS task status: ${TASK_STATUS}"
+
+            case "$TASK_STATUS" in
+              failed|stopped|stopping)
+                echo "ERROR: DMS task entered an unexpected terminal/stopping state."
+                exit 1
+                ;;
+              starting|ready|modifying)
+                echo "DMS task is not yet running. Waiting 60 seconds..."
+                sleep 60
+                continue
+                ;;
+              running)
+                ;;
+              *)
+                echo "DMS task is in state '${TASK_STATUS}'. Waiting for a supported state..."
+                sleep 60
+                continue
+                ;;
+            esac
+
+            STATS="$(aws dms describe-table-statistics \
+              --replication-task-arn "$TASK_ARN" \
+              --output json)"
+
+            TOTAL="$(jq '(.TableStatistics // []) | length' <<< "$STATS")"
+            COMPLETED="$(jq '[.TableStatistics[]? |
+              select(.TableState == "Table completed")] | length' <<< "$STATS")"
+            ERRORS="$(jq '[.TableStatistics[]? |
+              select(.TableState == "Table error" or
+                     .TableState == "Table cancelled")] | length' <<< "$STATS")"
+
+            echo "----------------------------------------"
+            echo "Total tables      : ${TOTAL}"
+            echo "Completed tables  : ${COMPLETED}"
+            echo "Tables with errors: ${ERRORS}"
+            echo "----------------------------------------"
+
+            if (( ERRORS > 0 )); then
+              echo "ERROR: DMS reported table errors/cancellations:"
+              jq -r '.TableStatistics[]? |
+                select(.TableState == "Table error" or
+                       .TableState == "Table cancelled") |
+                [.SchemaName, .TableName, .TableState] | @tsv' <<< "$STATS"
+              exit 1
+            fi
+
+            if (( TOTAL > 0 && COMPLETED == TOTAL )); then
+              echo "All ${TOTAL} reported tables have completed full load."
+              exit 0
+            fi
+
+            if (( TOTAL == 0 )); then
+              echo "DMS has not reported table statistics yet; waiting."
+            else
+              echo "Full load is still in progress. Checking again in 60 seconds..."
+            fi
+
+            sleep 60
+          done
+
+          echo "ERROR: Full-load monitoring timed out after 3 hours."
+          exit 1
+
+  ############################################
+  # STAGE 5 - VERIFY CDC READINESS
+  ############################################
+  verify-cdc:
+    name: "Stage 5 - Verify CDC Readiness"
+    runs-on: ubuntu-latest
+    needs:
+      - discover-dms
+      - monitor-full-load
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify DMS task and CDC readiness
+        shell: bash
+        env:
+          TASK_ARN: ${{ needs.discover-dms.outputs.task_arn }}
+        run: |
+          set -euo pipefail
+
+          TASK_INFO="$(aws dms describe-replication-tasks \
+            --filters "Name=replication-task-arn,Values=${TASK_ARN}" \
+            --output json)"
+
+          STATUS="$(jq -r '.ReplicationTasks[0].Status // "unknown"' <<< "$TASK_INFO")"
+          MIGRATION_TYPE="$(jq -r '.ReplicationTasks[0].MigrationType // "unknown"' <<< "$TASK_INFO")"
+          PROGRESS="$(jq -r '.ReplicationTasks[0].ReplicationTaskStats.FullLoadProgressPercent // 0' <<< "$TASK_INFO")"
+          ERRORS="$(jq -r '.ReplicationTasks[0].ReplicationTaskStats.TablesErrored // 0' <<< "$TASK_INFO")"
+
+          echo "----------------------------------------"
+          echo "DMS Final Verification"
+          echo "----------------------------------------"
+          echo "Task status     : ${STATUS}"
+          echo "Migration type  : ${MIGRATION_TYPE}"
+          echo "Full-load       : ${PROGRESS}%"
+          echo "Tables errored  : ${ERRORS}"
+          echo "----------------------------------------"
+
+          if [[ "$STATUS" != "running" ]]; then
+            echo "ERROR: DMS task is not running."
+            exit 1
+          fi
+
+          if [[ "$MIGRATION_TYPE" != "full-load-and-cdc" ]]; then
+            echo "ERROR: Expected migration type full-load-and-cdc."
+            exit 1
+          fi
+
+          if (( PROGRESS < 100 )); then
+            echo "ERROR: Full-load progress is below 100%."
+            exit 1
+          fi
+
+          if (( ERRORS > 0 )); then
+            echo "ERROR: DMS reports one or more table errors."
+            exit 1
+          fi
+
+          echo "SUCCESS: Full load is complete and the full-load-and-CDC task remains running."

@@ -1,6 +1,6 @@
 name: Infra-Setup
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       environment:
@@ -22,12 +22,30 @@ on:
           - apply
           - destroy
 
+  workflow_call:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        type: string
+      action:
+        description: "Terraform action"
+        required: true
+        type: string
+    secrets:
+      DB_PASSWORD:
+        required: true
+      SSH_PUBLIC_KEY:
+        required: true
+      EC2_PRIVATE_KEY:
+        required: true
+
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: terraform-${{ github.event.inputs.environment }}
+  group: terraform-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment }}
 
     defaults:
       run:
@@ -71,16 +89,32 @@ jobs:
           aws sts get-caller-identity
           echo "===================================="
 
+      # VALIDATE INPUTS FOR MANUAL AND REUSABLE EXECUTION
+      - name: Validate Workflow Inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ inputs.environment }}" in
+            dev|staging|prod) ;;
+            *) echo "ERROR: Unsupported environment"; exit 1 ;;
+          esac
+
+          case "${{ inputs.action }}" in
+            verify|plan|apply|destroy) ;;
+            *) echo "ERROR: Unsupported Terraform action"; exit 1 ;;
+          esac
+
       # BLOCK PROD DESTROY
       - name: Block Prod Destroy
-        if: github.event.inputs.action == 'destroy' && github.event.inputs.environment == 'prod'
+        if: inputs.action == 'destroy' && inputs.environment == 'prod'
         run: |
           echo "ERROR: Destroy is not allowed for PROD."
           exit 1
 
       # VERIFY AWS, TERRAFORM BACKEND AND ECR
       - name: Verify Terraform Backend and ECR Access
-        if: github.event.inputs.action == 'verify'
+        if: inputs.action == 'verify'
         run: |
           set -euo pipefail
 
@@ -94,7 +128,7 @@ jobs:
           echo "Checking environment state prefix..."
           aws s3api list-objects-v2 \
             --bucket jungle-terraform-bucket \
-            --prefix "bpay-etl/${{ github.event.inputs.environment }}/" \
+            --prefix "bpay-etl/${{ inputs.environment }}/" \
             --max-keys 5
 
           echo "Checking provider mirror object..."
@@ -116,7 +150,7 @@ jobs:
 
       # INSTALL MYSQL CLIENT
       - name: Install MySQL Client
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -126,7 +160,7 @@ jobs:
 
       # CREATE PEM FILE
       - name: Create EC2 PEM file
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         env:
           EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
         run: |
@@ -138,12 +172,12 @@ jobs:
 
       # PREPARE RENDERED SQL DIRECTORY
       - name: Create rendered SQL directory
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: mkdir -p .terraform-rendered/ec2
 
       # SETUP TERRAFORM
       - name: Setup Terraform
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
@@ -151,12 +185,12 @@ jobs:
 
       # VERIFY TERRAFORM
       - name: Verify Terraform Installation
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: terraform version
 
       # DOWNLOAD DATABRICKS PROVIDER MIRROR
       - name: Download Databricks Provider Mirror
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         shell: bash
         run: |
           set -euo pipefail
@@ -178,7 +212,7 @@ jobs:
 
       # CONFIGURE TERRAFORM PROVIDER MIRROR
       - name: Configure Terraform Provider Mirror
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         shell: bash
         run: |
           set -euo pipefail
@@ -202,12 +236,12 @@ jobs:
 
       # TERRAFORM INIT
       - name: Terraform Init
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         shell: bash
         run: |
           set -euo pipefail
 
-          STATE_KEY="bpay-etl/${{ github.event.inputs.environment }}/terraform.tfstate"
+          STATE_KEY="bpay-etl/${{ inputs.environment }}/terraform.tfstate"
 
           for attempt in 1 2 3 4; do
             echo "Terraform init attempt $attempt"
@@ -232,30 +266,30 @@ jobs:
 
       # TERRAFORM VALIDATE
       - name: Terraform Validate
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: terraform validate
 
       # TERRAFORM FORMAT CHECK
       - name: Terraform Format Check
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: terraform fmt -check -recursive
 
       # TERRAFORM PLAN
       - name: Terraform Plan
-        if: contains(fromJSON('["plan","apply"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply"]'), inputs.action)
         shell: bash
         run: |
           set -euo pipefail
 
           terraform plan \
             -parallelism=20 \
-            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
+            -var-file="environments/${{ inputs.environment }}.tfvars" \
             -var="private_key_path=bastion-key.pem" \
             -out=tfplan
 
       # TERRAFORM DESTROY PLAN
       - name: Terraform Destroy Plan
-        if: github.event.inputs.action == 'destroy'
+        if: inputs.action == 'destroy'
         shell: bash
         run: |
           set -euo pipefail
@@ -263,7 +297,7 @@ jobs:
           terraform plan \
             -destroy \
             -parallelism=20 \
-            -var-file="environments/${{ github.event.inputs.environment }}.tfvars" \
+            -var-file="environments/${{ inputs.environment }}.tfvars" \
             -var="private_key_path=bastion-key.pem" \
             -out=tfplan
 
@@ -271,26 +305,26 @@ jobs:
 
       # VERIFY RENDERED SQL
       - name: Verify rendered SQL
-        if: contains(fromJSON('["plan","apply","destroy"]'), github.event.inputs.action)
+        if: contains(fromJSON('["plan","apply","destroy"]'), inputs.action)
         run: |
           set -euo pipefail
           ls -R .terraform-rendered || true
 
       # TERRAFORM APPLY
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply'
+        if: inputs.action == 'apply'
         run: terraform apply -auto-approve tfplan
 
       # DISPLAY OUTPUTS
       - name: Display Terraform Outputs
-        if: github.event.inputs.action == 'apply'
+        if: inputs.action == 'apply'
         run: |
           set -euo pipefail
           echo "======================================"
           echo "Terraform Outputs"
           echo "======================================"
           terraform output
-          
+
       # UPDATE AWS PARAMETER STORE
       - name: Update Infrastructure Parameters
         if: inputs.action == 'apply'
@@ -320,7 +354,7 @@ jobs:
 
       # TERRAFORM DESTROY APPLY
       - name: Terraform Destroy Apply
-        if: github.event.inputs.action == 'destroy'
+        if: inputs.action == 'destroy'
         shell: bash
         run: |
           set -euo pipefail
@@ -334,10 +368,10 @@ jobs:
       # DELETE ENVIRONMENT-SPECIFIC ECR IMAGES
       # KEEP THE SHARED ECR REPOSITORY
       - name: Delete Environment Images from ECR
-        if: success() && github.event.inputs.action == 'destroy'
+        if: success() && inputs.action == 'destroy'
         env:
           ECR_REPOSITORY: jungle-ecr-images
-          ENVIRONMENT: ${{ github.event.inputs.environment }}
+          ENVIRONMENT: ${{ inputs.environment }}
         shell: bash
         run: |
           set -euo pipefail
