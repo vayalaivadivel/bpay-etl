@@ -1,4 +1,3 @@
-
 -- =============================================================================
 -- BPAY ETL - UNIFIED DATA WAREHOUSE INITIALIZATION
 -- Gold Layer (Star Schema)
@@ -326,7 +325,10 @@ CREATE TABLE IF NOT EXISTS fact_reward_balance (
 
     CONSTRAINT fk_balance_date
         FOREIGN KEY(date_key)
-        REFERENCES dim_date(date_key)
+        REFERENCES dim_date(date_key),
+
+    CONSTRAINT uk_fact_reward_balance_customer_date
+    UNIQUE (customer_key, date_key),
 
 ) ENGINE=InnoDB;
 
