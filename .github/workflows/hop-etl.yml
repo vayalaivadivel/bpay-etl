@@ -297,4 +297,4 @@ jobs:
           echo "Service     : ${ECS_SERVICE_NAME}"
           echo "Task        : ${TASK_ARN}"
           echo "Project     : ${HOP_PROJECT}"
-          echo "=======================================
+          echo "======================================="
