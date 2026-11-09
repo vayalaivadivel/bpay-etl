@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>fact_reward_transaction</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <description>Load unified reward transaction fact with dimension surrogate keys</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters></parameters>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit>100</transform_performance_capturing_size_limit>
+    <created_user>-</created_user>
+    <created_date>2026/11/09 00:00:00.000</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2026/11/09 00:00:00.000</modified_date>
+  </info>
+  <notepads></notepads>
+  <order>
+    <hop>
+      <from>Read New Reward Transactions</from>
+      <to>Insert Reward Transactions</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <transform>
+    <name>Read New Reward Transactions</name>
+    <type>TableInput</type>
+    <description>Read transactions, reward details and resolve all dimension surrogate keys</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>MYSQL_REPLICATED</connection>
+    <execute_each_row>N</execute_each_row>
+    <limit>0</limit>
+    <sql>SELECT
+    t.transaction_id,
+    t.offer_id,
+    t.campaign_id,
+    dd.date_key,
+    dc.customer_key,
+    dcard.card_key,
+    dm.merchant_key,
+    dof.offer_key,
+    dcamp.campaign_key,
+    t.transaction_amount,
+    t.currency,
+    rp.earned_points,
+    rp.redeemed_points,
+    rp.available_points,
+    t.transaction_status
+FROM bpaydb_replicated_dev.transactions t
+INNER JOIN bpaydb_replicated_dev.cards c
+    ON c.card_id = t.card_id
+INNER JOIN bpaydb_unified_dev.dim_customer dc
+    ON dc.cardholder_id = c.cardholder_id
+   AND dc.current_flag = 'Y'
+INNER JOIN bpaydb_unified_dev.dim_card dcard
+    ON dcard.card_id = t.card_id
+INNER JOIN bpaydb_unified_dev.dim_merchant dm
+    ON dm.merchant_name = TRIM(t.merchant_name)
+   AND dm.category_id = t.category_id
+LEFT JOIN bpaydb_unified_dev.dim_offer dof
+    ON dof.offer_id = t.offer_id
+LEFT JOIN bpaydb_unified_dev.dim_campaign dcamp
+    ON dcamp.campaign_id = t.campaign_id
+INNER JOIN bpaydb_unified_dev.dim_date dd
+    ON dd.full_date = t.transaction_date
+LEFT JOIN bpaydb_replicated_dev.reward_points rp
+    ON rp.transaction_id = t.transaction_id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM bpaydb_unified_dev.fact_reward_transaction existing
+    WHERE existing.transaction_id = t.transaction_id
+)
+ORDER BY t.transaction_id;</sql>
+    <variables_active>N</variables_active>
+    <attributes/>
+    <GUI>
+      <xloc>160</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Insert Reward Transactions</name>
+    <type>TableOutput</type>
+    <description>Insert new reward transaction fact records</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <commit>1000</commit>
+    <connection>MYSQL_UNIFIED</connection>
+    <fields></fields>
+    <ignore_errors>N</ignore_errors>
+    <only_when_have_rows>N</only_when_have_rows>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_monthly>N</partitioning_monthly>
+    <return_keys>N</return_keys>
+    <specify_fields>N</specify_fields>
+    <table>fact_reward_transaction</table>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_in_table>Y</tablename_in_table>
+    <truncate>N</truncate>
+    <use_batch>Y</use_batch>
+    <attributes/>
+    <GUI>
+      <xloc>480</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform_error_handling></transform_error_handling>
+  <attributes/>
+</pipeline>

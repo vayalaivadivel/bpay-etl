@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
 
     reward_transaction_key BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-    transaction_id INT,
+    transaction_id INT NOT NULL,
 
     offer_id INT,
 
@@ -247,6 +247,8 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
     transaction_status VARCHAR(20),
 
     load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_fact_reward_transaction_id (transaction_id),
 
     CONSTRAINT fk_fact_date
         FOREIGN KEY(date_key)
