@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
 
           MIRROR_DIR="$RUNNER_TEMP/terraform-mirror"
-          PROVIDER_DIR="$MIRROR_DIR/registry.terraform.io/databricks/databricks/1.114.2/linux_amd64"
+          PROVIDER_DIR="$MIRROR_DIR/registry.terraform.io/databricks/databricks"
 
           mkdir -p "$PROVIDER_DIR"
 
