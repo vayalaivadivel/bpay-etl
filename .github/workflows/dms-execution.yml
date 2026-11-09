@@ -232,6 +232,8 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      
+      
       - name: Start or resume DMS task
         shell: bash
         env:
@@ -249,25 +251,25 @@ jobs:
           case "$STATUS" in
             ready)
               echo "Starting initial full load and CDC."
-              aws dms start-replication \
+              aws dms start-replication-task \
                 --replication-task-arn "$TASK_ARN" \
-                --start-replication-type start-replication
+                --start-replication-task-type start-replication
               ;;
             stopped)
-              echo "Resuming the existing DMS replication task."
-              aws dms start-replication \
+              echo "Resuming existing DMS replication task."
+              aws dms start-replication-task \
                 --replication-task-arn "$TASK_ARN" \
-                --start-replication-type resume-processing
+                --start-replication-task-type resume-processing
               ;;
             starting|running)
-              echo "DMS task is already starting or running; no start command is needed."
+              echo "DMS task is already starting or running."
               ;;
             *)
               echo "ERROR: DMS task cannot be started from status: ${STATUS}"
-              echo "No automatic reload or restart will be attempted."
               exit 1
               ;;
           esac
+
 
   ############################################
   # STAGE 4 - MONITOR FULL LOAD
