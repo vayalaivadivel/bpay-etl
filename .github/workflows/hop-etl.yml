@@ -189,13 +189,17 @@ jobs:
             echo "Workflow: ${workflow_file}"
             echo "======================================="
 
-            aws ecs execute-command \
-              --cluster "${ECS_CLUSTER_NAME}" \
-              --task "${TASK_ARN}" \
-              --container "${ECS_CONTAINER_NAME}" \
-              --interactive \
-              --command "/opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${workflow_file}" \
-              --region "${AWS_REGION}"
+            local remote_command
+            remote_command="/bin/bash -lc 'set -euo pipefail; echo ECS_EXEC_OK; /opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${workflow_file}'"
+
+            script -q -e -c \
+              "aws ecs execute-command \
+                --cluster '${ECS_CLUSTER_NAME}' \
+                --task '${TASK_ARN}' \
+                --container '${ECS_CONTAINER_NAME}' \
+                --interactive \
+                --command \"${remote_command}\" \
+                --region '${AWS_REGION}'" /dev/null
 
             echo
             echo "Completed: ${workflow_name}"
@@ -288,6 +292,8 @@ jobs:
         if: success()
         shell: bash
         run: |
+          set -euo pipefail
+
           echo "======================================="
           echo "Apache Hop ETL Successful"
           echo "======================================="
