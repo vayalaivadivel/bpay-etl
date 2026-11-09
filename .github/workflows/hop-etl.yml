@@ -13,6 +13,16 @@ on:
           - staging
           - prod
 
+      execution:
+        description: "Select ETL execution"
+        required: true
+        default: raw_to_replicated
+        type: choice
+        options:
+          - raw_to_replicated
+          - replicated_to_unified
+          - all
+
 permissions:
   id-token: write
   contents: read
@@ -26,19 +36,21 @@ jobs:
     name: Apache Hop ETL Execution
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     environment:
       name: ${{ github.event.inputs.environment || 'dev' }}
+
     env:
       AWS_REGION: ap-south-1
       APP_NAME: bpay-etl
       ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      EXECUTION: ${{ github.event.inputs.execution || 'raw_to_replicated' }}
 
       ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
       ECS_SERVICE_NAME: bpay-etl-hop-service-${{ github.event.inputs.environment || 'dev' }}
       ECS_CONTAINER_NAME: bpay-etl-hop
 
       HOP_PROJECT: card-rewards-etl
-      HOP_WORKFLOW: /files/workflows/raw_to_replicated.hwf
 
     steps:
 
@@ -74,12 +86,12 @@ jobs:
 
           echo
           echo "Environment : ${ENVIRONMENT}"
+          echo "Execution   : ${EXECUTION}"
           echo "Region      : ${AWS_REGION}"
           echo "Cluster     : ${ECS_CLUSTER_NAME}"
           echo "Service     : ${ECS_SERVICE_NAME}"
           echo "Container   : ${ECS_CONTAINER_NAME}"
           echo "Project     : ${HOP_PROJECT}"
-          echo "Workflow    : ${HOP_WORKFLOW}"
 
       # ------------------------------------------------------------
       # VERIFY ECS CLUSTER
@@ -160,31 +172,78 @@ jobs:
             --output table
 
       # ------------------------------------------------------------
-      # EXECUTE HOP WORKFLOW
+      # EXECUTE SELECTED HOP WORKFLOWS
       # ------------------------------------------------------------
-      - name: Execute RAW to REPLICATED Workflow
+      - name: Execute Apache Hop Workflows
         shell: bash
         run: |
           set -euo pipefail
 
+          run_hop_workflow() {
+            local workflow_file="$1"
+            local workflow_name="$2"
+
+            echo
+            echo "======================================="
+            echo "Starting: ${workflow_name}"
+            echo "Workflow: ${workflow_file}"
+            echo "======================================="
+
+            aws ecs execute-command \
+              --cluster "${ECS_CLUSTER_NAME}" \
+              --task "${TASK_ARN}" \
+              --container "${ECS_CONTAINER_NAME}" \
+              --interactive \
+              --command "/opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${workflow_file}" \
+              --region "${AWS_REGION}"
+
+            echo
+            echo "Completed: ${workflow_name}"
+          }
+
           echo "======================================="
-          echo "Starting Apache Hop ETL"
+          echo "Apache Hop ETL Execution"
           echo "======================================="
           echo "Environment : ${ENVIRONMENT}"
-          echo "Cluster     : ${ECS_CLUSTER_NAME}"
-          echo "Service     : ${ECS_SERVICE_NAME}"
+          echo "Execution   : ${EXECUTION}"
           echo "Task        : ${TASK_ARN}"
           echo "Project     : ${HOP_PROJECT}"
-          echo "Workflow    : ${HOP_WORKFLOW}"
           echo "======================================="
 
-          aws ecs execute-command \
-            --cluster "${ECS_CLUSTER_NAME}" \
-            --task "${TASK_ARN}" \
-            --container "${ECS_CONTAINER_NAME}" \
-            --interactive \
-            --command "/opt/hop/hop-run.sh -j ${HOP_PROJECT} -f ${HOP_WORKFLOW}" \
-            --region "${AWS_REGION}"
+          case "${EXECUTION}" in
+
+            raw_to_replicated)
+              run_hop_workflow \
+                "/files/workflows/raw_to_replicated.hwf" \
+                "RAW to REPLICATED"
+              ;;
+
+            replicated_to_unified)
+              run_hop_workflow \
+                "/files/workflows/replicated_to_unified.hwf" \
+                "REPLICATED to UNIFIED"
+              ;;
+
+            all)
+              echo "Executing complete ETL sequence."
+
+              run_hop_workflow \
+                "/files/workflows/raw_to_replicated.hwf" \
+                "RAW to REPLICATED"
+
+              run_hop_workflow \
+                "/files/workflows/replicated_to_unified.hwf" \
+                "REPLICATED to UNIFIED"
+
+              echo
+              echo "Complete ETL sequence finished."
+              ;;
+
+            *)
+              echo "ERROR: Invalid execution selection: ${EXECUTION}"
+              exit 1
+              ;;
+          esac
 
       # ------------------------------------------------------------
       # VERIFY ECS SERVICE AFTER ETL
@@ -233,9 +292,9 @@ jobs:
           echo "Apache Hop ETL Successful"
           echo "======================================="
           echo "Environment : ${ENVIRONMENT}"
+          echo "Execution   : ${EXECUTION}"
           echo "Cluster     : ${ECS_CLUSTER_NAME}"
           echo "Service     : ${ECS_SERVICE_NAME}"
           echo "Task        : ${TASK_ARN}"
           echo "Project     : ${HOP_PROJECT}"
-          echo "Workflow    : ${HOP_WORKFLOW}"
-          echo "======================================="
+          echo "=======================================
