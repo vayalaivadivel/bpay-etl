@@ -109,3 +109,18 @@ output "hop_fqdn" {
 
   value = "${var.env}-hop.${var.domain_name}"
 }
+
+
+#########################################
+# AWS DMS
+#########################################
+
+output "dms_replication_task_arn" {
+  description = "DMS replication task ARN"
+  value       = module.dms.dms_replication_task_arn
+}
+
+output "dms_replication_instance_arn" {
+  description = "DMS replication instance ARN"
+  value       = module.dms.dms_replication_instance_arn
+}
