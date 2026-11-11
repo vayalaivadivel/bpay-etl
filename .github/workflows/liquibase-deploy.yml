@@ -28,12 +28,28 @@ on:
           - validate
           - update
 
+  workflow_call:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        type: string
+      action:
+        description: "Choose action"
+        required: true
+        type: string
+    secrets:
+      DB_PASSWORD:
+        required: true
+      EC2_PRIVATE_KEY:
+        required: true
+
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: liquibase-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+  group: liquibase-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,12 +58,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+    environment: ${{ inputs.environment || 'dev' }}
 
     env:
       DB_NAME: bpaydb
       DB_USERNAME: vadivel
-      DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+      DEPLOY_ENV: ${{ inputs.environment || 'dev' }}
       AWS_REGION: ap-south-1
       AWS_DEFAULT_REGION: ap-south-1
 
@@ -58,6 +74,39 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ==========================================================
+      # VALIDATE WORKFLOW INPUTS
+      # ==========================================================
+
+      - name: Validate Workflow Inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${DEPLOY_ENV}" in
+            dev|staging|prod)
+              ;;
+            *)
+              echo "::error::Unsupported environment: ${DEPLOY_ENV}"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${GITHUB_EVENT_NAME}" != "push" ]]; then
+            case "${{ inputs.action }}" in
+              validate|update)
+                ;;
+              *)
+                echo "::error::Unsupported Liquibase action."
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "Environment: ${DEPLOY_ENV}"
+          echo "Database: ${DB_NAME}"
+          echo "Event: ${GITHUB_EVENT_NAME}"
 
       # ==========================================================
       # CONFIGURE AWS CREDENTIALS USING OIDC
@@ -248,7 +297,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
 
             SSH_PID="$(cat "$RUNNER_TEMP/ssh-tunnel.pid")"
 
@@ -303,7 +352,7 @@ jobs:
       # ==========================================================
 
       - name: Liquibase validate
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'validate'
+        if: ${{ inputs.action == 'validate' }}
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
@@ -323,7 +372,7 @@ jobs:
       # ==========================================================
 
       - name: Liquibase update
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'update')
+        if: ${{ github.event_name == 'push' || inputs.action == 'update' }}
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
@@ -343,7 +392,7 @@ jobs:
       # ==========================================================
 
       - name: Verify source seed counts
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'update')
+        if: ${{ github.event_name == 'push' || inputs.action == 'update' }}
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |

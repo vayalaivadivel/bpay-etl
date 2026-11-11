@@ -1,0 +1,380 @@
+name: BPAY-ETL-Master-Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select deployment environment"
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: bpay-etl-master-${{ inputs.environment }}
+  cancel-in-progress: false
+
+# ============================================================
+# STAGE 1: INFRASTRUCTURE
+# ============================================================
+
+jobs:
+
+  infrastructure:
+    name: "1. Infrastructure Setup"
+    uses: ./.github/workflows/infra-setup.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+      action: apply
+
+    secrets: inherit
+
+  # ============================================================
+  # STAGE 2: LIQUIBASE
+  # ============================================================
+
+  liquibase:
+    name: "2. Liquibase Deployment"
+    needs: infrastructure
+
+    uses: ./.github/workflows/liquibase-deploy.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+      action: update
+
+    secrets: inherit
+
+  # ============================================================
+  # STAGE 3: AWS DMS
+  # ============================================================
+
+  dms-execution:
+    name: "3. DMS Full Load and CDC"
+    needs: liquibase
+
+    uses: ./.github/workflows/dms-execution.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+
+  # ============================================================
+  # STAGE 4: APACHE HOP DEPLOYMENT
+  # ============================================================
+
+  hop-deployment:
+    name: "4. Apache Hop ECS Deployment"
+    needs: dms-execution
+
+    uses: ./.github/workflows/hop-deploy.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+
+  # ============================================================
+  # STAGE 5: RAW TO REPLICATED ETL
+  # ============================================================
+
+  raw-to-replicated:
+    name: "5. Raw to Replicated ETL"
+    needs: hop-deployment
+
+    uses: ./.github/workflows/hop-etl.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+      execution: raw_to_replicated
+
+  # ============================================================
+  # STAGE 6: REPLICATED TO UNIFIED ETL
+  # ============================================================
+
+  replicated-to-unified:
+    name: "6. Replicated to Unified ETL"
+    needs: raw-to-replicated
+
+    uses: ./.github/workflows/hop-etl.yml
+
+    with:
+      environment: ${{ inputs.environment }}
+      execution: replicated_to_unified
+
+  # ============================================================
+  # STAGE 7: FINAL DATA VERIFICATION
+  # ============================================================
+
+  final-verification:
+    name: "7. Unified Warehouse Verification"
+    needs: replicated-to-unified
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    environment: ${{ inputs.environment }}
+
+    env:
+      AWS_REGION: ap-south-1
+      DB_USERNAME: vadivel
+      UNIFIED_DB_NAME: bpaydb_unified_${{ inputs.environment }}
+
+    steps:
+
+      # --------------------------------------------------------
+      # CONFIGURE AWS CREDENTIALS
+      # --------------------------------------------------------
+
+      - name: Configure AWS Credentials
+        id: aws-auth
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
+
+      # --------------------------------------------------------
+      # INSTALL MYSQL AND SSH CLIENT
+      # --------------------------------------------------------
+
+      - name: Install Required Tools
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            openssh-client \
+            mysql-client
+
+          mysql --version
+          ssh -V
+
+      # --------------------------------------------------------
+      # RETRIEVE INFRASTRUCTURE PARAMETERS
+      # --------------------------------------------------------
+
+      - name: Retrieve Infrastructure Parameters
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Database: ${UNIFIED_DB_NAME}"
+
+          BASTION_IP=$(aws ssm get-parameter \
+            --name "/bpay-etl/${{ inputs.environment }}/bastion-public-ip" \
+            --query "Parameter.Value" \
+            --output text \
+            --region "${AWS_REGION}")
+
+          RDS_ENDPOINT=$(aws ssm get-parameter \
+            --name "/bpay-etl/${{ inputs.environment }}/rds-endpoint" \
+            --query "Parameter.Value" \
+            --output text \
+            --region "${AWS_REGION}")
+
+          if [[ -z "$BASTION_IP" || "$BASTION_IP" == "None" ]]; then
+            echo "::error::Bastion IP not found."
+            exit 1
+          fi
+
+          if [[ -z "$RDS_ENDPOINT" || "$RDS_ENDPOINT" == "None" ]]; then
+            echo "::error::RDS endpoint not found."
+            exit 1
+          fi
+
+          echo "BASTION_IP=${BASTION_IP}" >> "$GITHUB_ENV"
+          echo "RDS_ENDPOINT=${RDS_ENDPOINT}" >> "$GITHUB_ENV"
+
+          echo "Infrastructure parameters retrieved."
+
+      # --------------------------------------------------------
+      # CONFIGURE SSH TUNNEL
+      # --------------------------------------------------------
+
+      - name: Configure SSH Tunnel
+        env:
+          EC2_PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          umask 077
+
+          test -n "$EC2_PRIVATE_KEY"
+
+          printf '%s\n' "$EC2_PRIVATE_KEY" \
+            > "$RUNNER_TEMP/bastion.pem"
+
+          chmod 600 "$RUNNER_TEMP/bastion.pem"
+
+          ssh-keygen -y \
+            -f "$RUNNER_TEMP/bastion.pem" > /dev/null
+
+          ssh -i "$RUNNER_TEMP/bastion.pem" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=3 \
+            -N \
+            -L 3307:"${RDS_ENDPOINT}":3306 \
+            ubuntu@"${BASTION_IP}" &
+
+          SSH_PID=$!
+
+          echo "$SSH_PID" > "$RUNNER_TEMP/ssh-tunnel.pid"
+
+          echo "SSH tunnel started: ${SSH_PID}"
+
+      # --------------------------------------------------------
+      # WAIT FOR DATABASE CONNECTION
+      # --------------------------------------------------------
+
+      - name: Wait for Database Connection
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for _ in $(seq 1 30); do
+
+            SSH_PID="$(cat "$RUNNER_TEMP/ssh-tunnel.pid")"
+
+            if ! kill -0 "$SSH_PID" 2>/dev/null; then
+              echo "::error::SSH tunnel has exited."
+              exit 1
+            fi
+
+            if MYSQL_PWD="$DB_PASSWORD" mysql \
+              --protocol=TCP \
+              -h 127.0.0.1 \
+              -P 3307 \
+              -u "$DB_USERNAME" \
+              "$UNIFIED_DB_NAME" \
+              -e "SELECT 1;" >/dev/null 2>&1; then
+
+              echo "Database connection successful."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "::error::Database connection failed."
+          exit 1
+
+      # --------------------------------------------------------
+      # VERIFY UNIFIED DATABASE TABLES
+      # --------------------------------------------------------
+
+      - name: Verify Unified Warehouse Tables
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=========================================="
+          echo "BPAY UNIFIED DATA WAREHOUSE VERIFICATION"
+          echo "=========================================="
+
+          echo "Database: ${UNIFIED_DB_NAME}"
+
+          TABLES=(
+            dim_date
+            dim_customer
+            dim_card
+            dim_merchant
+            dim_campaign
+            dim_offer
+            fact_reward_transaction
+            fact_reward_balance
+            fact_campaign_performance
+          )
+
+          TOTAL_ROWS=0
+
+          printf "\n%-35s %12s\n" "TABLE NAME" "ROW COUNT"
+          printf '%s\n' "------------------------------------------------"
+
+          for TABLE in "${TABLES[@]}"; do
+
+            COUNT=$(MYSQL_PWD="$DB_PASSWORD" mysql \
+              --protocol=TCP \
+              -h 127.0.0.1 \
+              -P 3307 \
+              -u "$DB_USERNAME" \
+              "$UNIFIED_DB_NAME" \
+              --batch \
+              --skip-column-names \
+              -e "SELECT COUNT(*) FROM \`${TABLE}\`;")
+
+            if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid row count for ${TABLE}."
+              exit 1
+            fi
+
+            printf "%-35s %12s\n" "$TABLE" "$COUNT"
+
+            if (( COUNT == 0 )); then
+              echo "::error::Table ${TABLE} contains zero rows."
+              exit 1
+            fi
+
+            TOTAL_ROWS=$((TOTAL_ROWS + COUNT))
+
+          done
+
+          printf '%s\n' "------------------------------------------------"
+          printf "%-35s %12s\n" "TOTAL ROWS" "$TOTAL_ROWS"
+
+          echo
+          echo "All nine unified warehouse tables verified."
+          echo "=========================================="
+
+      # --------------------------------------------------------
+      # CLOSE SSH TUNNEL
+      # --------------------------------------------------------
+
+      - name: Close SSH Tunnel
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          if [ -f "$RUNNER_TEMP/ssh-tunnel.pid" ]; then
+            SSH_PID="$(cat "$RUNNER_TEMP/ssh-tunnel.pid")"
+
+            kill "$SSH_PID" 2>/dev/null || true
+
+            rm -f "$RUNNER_TEMP/ssh-tunnel.pid"
+          fi
+
+          rm -f "$RUNNER_TEMP/bastion.pem"
+
+          echo "SSH tunnel cleanup completed."
+
+      # --------------------------------------------------------
+      # FINAL SUMMARY
+      # --------------------------------------------------------
+
+      - name: Master Pipeline Summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "BPAY ETL MASTER PIPELINE SUCCESSFUL"
+          echo "=========================================="
+          echo "Environment : ${{ inputs.environment }}"
+          echo "Unified DB  : ${UNIFIED_DB_NAME}"
+          echo "Verification: PASSED"
+          echo "=========================================="

@@ -23,12 +23,23 @@ on:
           - replicated_to_unified
           - all
 
+  workflow_call:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        type: string
+      execution:
+        description: "Select ETL execution"
+        required: true
+        type: string
+
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: hop-etl-${{ github.event.inputs.environment || 'dev' }}
+  group: hop-etl-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,16 +49,16 @@ jobs:
     timeout-minutes: 60
 
     environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
+      name: ${{ inputs.environment || 'dev' }}
 
     env:
       AWS_REGION: ap-south-1
       APP_NAME: bpay-etl
-      ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-      EXECUTION: ${{ github.event.inputs.execution || 'raw_to_replicated' }}
+      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+      EXECUTION: ${{ inputs.execution || 'raw_to_replicated' }}
 
-      ECS_CLUSTER_NAME: bpay-etl-ecs-${{ github.event.inputs.environment || 'dev' }}
-      ECS_SERVICE_NAME: bpay-etl-hop-service-${{ github.event.inputs.environment || 'dev' }}
+      ECS_CLUSTER_NAME: bpay-etl-ecs-${{ inputs.environment || 'dev' }}
+      ECS_SERVICE_NAME: bpay-etl-hop-service-${{ inputs.environment || 'dev' }}
       ECS_CONTAINER_NAME: bpay-etl-hop
 
       HOP_PROJECT: card-rewards-etl
@@ -57,12 +68,44 @@ jobs:
       # ------------------------------------------------------------
       # CHECKOUT
       # ------------------------------------------------------------
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
+      # VALIDATE WORKFLOW INPUTS
+      # ------------------------------------------------------------
+
+      - name: Validate Workflow Inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${ENVIRONMENT}" in
+            dev|staging|prod)
+              ;;
+            *)
+              echo "::error::Unsupported environment: ${ENVIRONMENT}"
+              exit 1
+              ;;
+          esac
+
+          case "${EXECUTION}" in
+            raw_to_replicated|replicated_to_unified|all)
+              ;;
+            *)
+              echo "::error::Unsupported ETL execution: ${EXECUTION}"
+              exit 1
+              ;;
+          esac
+
+          echo "Environment: ${ENVIRONMENT}"
+          echo "Execution: ${EXECUTION}"
+
+      # ------------------------------------------------------------
       # AWS AUTHENTICATION
       # ------------------------------------------------------------
+
       - name: Configure AWS Credentials
         id: aws-auth
         uses: aws-actions/configure-aws-credentials@v4
@@ -73,6 +116,7 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY AWS
       # ------------------------------------------------------------
+
       - name: Verify AWS Login
         shell: bash
         run: |
@@ -96,6 +140,7 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY ECS CLUSTER
       # ------------------------------------------------------------
+
       - name: Verify ECS Cluster
         shell: bash
         run: |
@@ -112,6 +157,7 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY ECS SERVICE
       # ------------------------------------------------------------
+
       - name: Verify ECS Service
         shell: bash
         run: |
@@ -129,6 +175,7 @@ jobs:
       # ------------------------------------------------------------
       # FIND RUNNING HOP TASK
       # ------------------------------------------------------------
+
       - name: Find Running Hop Task
         shell: bash
         run: |
@@ -157,6 +204,7 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY HOP TASK
       # ------------------------------------------------------------
+
       - name: Verify Hop Task
         shell: bash
         run: |
@@ -174,6 +222,7 @@ jobs:
       # ------------------------------------------------------------
       # EXECUTE SELECTED HOP WORKFLOWS
       # ------------------------------------------------------------
+
       - name: Execute Apache Hop Workflows
         shell: bash
         run: |
@@ -252,6 +301,7 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY ECS SERVICE AFTER ETL
       # ------------------------------------------------------------
+
       - name: Verify Hop Service
         if: ${{ always() && steps.aws-auth.outcome == 'success' }}
         shell: bash
@@ -270,6 +320,7 @@ jobs:
       # ------------------------------------------------------------
       # SHOW ECS EVENTS ON FAILURE
       # ------------------------------------------------------------
+
       - name: Show ECS Events
         if: ${{ failure() && steps.aws-auth.outcome == 'success' }}
         shell: bash
@@ -288,6 +339,7 @@ jobs:
       # ------------------------------------------------------------
       # SUCCESS SUMMARY
       # ------------------------------------------------------------
+
       - name: ETL Summary
         if: success()
         shell: bash
