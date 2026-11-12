@@ -275,29 +275,149 @@ CREATE TABLE IF NOT EXISTS fact_reward_transaction (
 
 ) ENGINE=InnoDB;
 
-CREATE INDEX idx_fact_reward_transaction_date
-ON fact_reward_transaction(date_key);
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_date'
+);
 
-CREATE INDEX idx_fact_reward_transaction_customer
-ON fact_reward_transaction(customer_key);
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_date ON fact_reward_transaction(date_key)',
+    'SELECT 1'
+);
 
-CREATE INDEX idx_fact_reward_transaction_card
-ON fact_reward_transaction(card_key);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-CREATE INDEX idx_fact_reward_transaction_merchant
-ON fact_reward_transaction(merchant_key);
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_customer'
+);
 
-CREATE INDEX idx_fact_reward_transaction_offer
-ON fact_reward_transaction(offer_key);
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_customer ON fact_reward_transaction(customer_key)',
+    'SELECT 1'
+);
 
-CREATE INDEX idx_fact_reward_transaction_campaign
-ON fact_reward_transaction(campaign_key);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-CREATE INDEX idx_fact_reward_transaction_status
-ON fact_reward_transaction(transaction_status);
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_card'
+);
 
-CREATE INDEX idx_fact_reward_transaction_load
-ON fact_reward_transaction(load_timestamp);
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_card ON fact_reward_transaction(card_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_merchant'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_merchant ON fact_reward_transaction(merchant_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_offer'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_offer ON fact_reward_transaction(offer_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_campaign'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_campaign ON fact_reward_transaction(campaign_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_status'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_status ON fact_reward_transaction(transaction_status)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_transaction'
+      AND index_name = 'idx_fact_reward_transaction_load'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_transaction_load ON fact_reward_transaction(load_timestamp)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- =============================================================================
 -- FACT : CUSTOMER REWARD BALANCE
@@ -328,18 +448,63 @@ CREATE TABLE IF NOT EXISTS fact_reward_balance (
         REFERENCES dim_date(date_key),
 
     CONSTRAINT uk_fact_reward_balance_customer_date
-    UNIQUE (customer_key, date_key),
+    UNIQUE (customer_key, date_key)
 
 ) ENGINE=InnoDB;
 
-CREATE INDEX idx_fact_reward_balance_customer
-ON fact_reward_balance(customer_key);
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_balance'
+      AND index_name = 'idx_fact_reward_balance_customer'
+);
 
-CREATE INDEX idx_fact_reward_balance_date
-ON fact_reward_balance(date_key);
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_balance_customer ON fact_reward_balance(customer_key)',
+    'SELECT 1'
+);
 
-CREATE INDEX idx_fact_reward_balance_load
-ON fact_reward_balance(load_timestamp);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_balance'
+      AND index_name = 'idx_fact_reward_balance_date'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_balance_date ON fact_reward_balance(date_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_reward_balance'
+      AND index_name = 'idx_fact_reward_balance_load'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_reward_balance_load ON fact_reward_balance(load_timestamp)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- =============================================================================
 -- FACT : CAMPAIGN PERFORMANCE
@@ -372,18 +537,63 @@ CREATE TABLE IF NOT EXISTS fact_campaign_performance (
         REFERENCES dim_date(date_key),
         
     CONSTRAINT uk_fact_campaign_performance_campaign_date
-    UNIQUE (campaign_key, date_key),
+    UNIQUE (campaign_key, date_key)
 
 ) ENGINE=InnoDB;
 
-CREATE INDEX idx_fact_campaign_performance_campaign
-ON fact_campaign_performance(campaign_key);
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_campaign_performance'
+      AND index_name = 'idx_fact_campaign_performance_campaign'
+);
 
-CREATE INDEX idx_fact_campaign_performance_date
-ON fact_campaign_performance(date_key);
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_campaign_performance_campaign ON fact_campaign_performance(campaign_key)',
+    'SELECT 1'
+);
 
-CREATE INDEX idx_fact_campaign_performance_load
-ON fact_campaign_performance(load_timestamp);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_campaign_performance'
+      AND index_name = 'idx_fact_campaign_performance_date'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_campaign_performance_date ON fact_campaign_performance(date_key)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @index_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'fact_campaign_performance'
+      AND index_name = 'idx_fact_campaign_performance_load'
+);
+
+SET @sql = IF(
+    @index_exists = 0,
+    'CREATE INDEX idx_fact_campaign_performance_load ON fact_campaign_performance(load_timestamp)',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- =============================================================================
 -- STORED PROCEDURE : CUSTOMER SCD TYPE 2

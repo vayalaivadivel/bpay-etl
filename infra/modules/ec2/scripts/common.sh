@@ -30,6 +30,7 @@ wait_for_rds() {
 # EXECUTE SQL
 #############################################
 
+
 run_sql() {
 
     local FILE="$1"
@@ -39,23 +40,21 @@ run_sql() {
     echo "Executing : ${FILE}"
     echo "========================================"
 
-    mysql \
+    if mysql \
+        --show-warnings \
         -vvv \
         -h "${RDS_HOST}" \
         -u "${DB_USER}" \
         -p"${DB_PASSWORD}" \
         < "${FILE}"
-
-    local RC=$?
-
-    echo "Exit Code : ${RC}"
-
-    if [ ${RC} -ne 0 ]; then
+    then
+        echo "SUCCESS : ${FILE}"
+    else
+        local RC=$?
         echo "FAILED : ${FILE}"
-        exit ${RC}
+        echo "Exit Code : ${RC}"
+        return "${RC}"
     fi
-
-    echo "SUCCESS : ${FILE}"
 }
 
 #############################################

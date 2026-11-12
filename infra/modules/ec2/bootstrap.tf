@@ -8,8 +8,27 @@ resource "null_resource" "bootstrap" {
     local_file.init_unified
   ]
 
+  # Re-run bootstrap when infrastructure or initialization
+  # scripts / rendered SQL files change.
   triggers = {
     bastion_id = aws_instance.bastion.id
+
+    init_databases_hash  = local_file.init_databases.content_md5
+    init_source_hash     = local_file.init_source.content_md5
+    init_replicated_hash = local_file.init_replicated.content_md5
+    init_unified_hash    = local_file.init_unified.content_md5
+
+    init_db_script_hash = filesha256(
+      "${path.module}/scripts/init-db.sh"
+    )
+
+    common_script_hash = filesha256(
+      "${path.module}/scripts/common.sh"
+    )
+
+    verify_db_script_hash = filesha256(
+      "${path.module}/scripts/verify-db.sh"
+    )
   }
 
   connection {
