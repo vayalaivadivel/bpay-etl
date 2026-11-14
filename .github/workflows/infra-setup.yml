@@ -200,9 +200,11 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y mysql-client || \
-            sudo apt-get install -y default-mysql-client
+          sudo apt-get install -y mysql-client dnsutils jq || \
+            sudo apt-get install -y default-mysql-client dnsutils jq
           mysql --version
+          dig -v
+          jq --version
 
       # CREATE PEM FILE
       - name: Create EC2 PEM file
@@ -371,6 +373,200 @@ jobs:
           echo "======================================"
           terraform output
 
+      # UPDATE GODADDY NAMESERVERS FOR DEV ROUTE 53 HOSTED ZONE
+      # This is deliberately DEV-only because vayalai.in is delegated to the DEV hosted zone.
+      - name: Update GoDaddy Nameservers
+        if: inputs.action == 'apply' && inputs.environment == 'dev'
+        shell: bash
+        env:
+          GODADDY_PAT: ${{ secrets.GODADDY_PAT }}
+          GODADDY_DOMAIN: vayalai.in
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GODADDY_PAT:-}" ]]; then
+            echo "::error::GODADDY_PAT repository secret is not configured."
+            exit 1
+          fi
+
+          API_BASE="https://api.godaddy.com/v3/domains"
+          DOMAIN_URL="${API_BASE}/domain-names/${GODADDY_DOMAIN}"
+          NAMESERVERS_URL="${DOMAIN_URL}/nameservers"
+
+          echo "Reading Route 53 nameservers from Terraform output..."
+          terraform output -json route53_name_servers > "$RUNNER_TEMP/route53-nameservers.json"
+
+          jq -e 'type == "array" and length >= 2 and all(.[]; type == "string" and length > 0)' \
+            "$RUNNER_TEMP/route53-nameservers.json" >/dev/null
+
+          jq -r 'map(ascii_downcase | sub("\\.$"; "")) | sort[]' \
+            "$RUNNER_TEMP/route53-nameservers.json" > "$RUNNER_TEMP/expected-nameservers.txt"
+
+          EXPECTED_COUNT=$(wc -l < "$RUNNER_TEMP/expected-nameservers.txt")
+          if [[ "$EXPECTED_COUNT" -lt 2 || "$EXPECTED_COUNT" -gt 13 ]]; then
+            echo "::error::Unexpected Route 53 nameserver count: ${EXPECTED_COUNT}"
+            exit 1
+          fi
+
+          echo "Desired Route 53 nameservers:"
+          cat "$RUNNER_TEMP/expected-nameservers.txt"
+
+          echo "Reading current GoDaddy nameservers..."
+          HTTP_STATUS=$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/godaddy-domain.json" \
+            --write-out '%{http_code}' \
+            --request GET "$DOMAIN_URL" \
+            --header "Authorization: Bearer ${GODADDY_PAT}" \
+            --header "Accept: application/json")
+
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "::error::GoDaddy domain lookup failed with HTTP ${HTTP_STATUS}. Check the PAT and domains.domain:read scope."
+            cat "$RUNNER_TEMP/godaddy-domain.json" || true
+            exit 1
+          fi
+
+          jq -e '.nameServers | type == "array"' "$RUNNER_TEMP/godaddy-domain.json" >/dev/null
+          jq -r '.nameServers[] | ascii_downcase | sub("\\.$"; "")' \
+            "$RUNNER_TEMP/godaddy-domain.json" | sort -u > "$RUNNER_TEMP/current-nameservers.txt"
+
+          if diff -u "$RUNNER_TEMP/expected-nameservers.txt" "$RUNNER_TEMP/current-nameservers.txt"; then
+            echo "GoDaddy nameservers already match Route 53. No update required."
+          else
+            echo "GoDaddy nameservers differ. Submitting nameserver update..."
+
+            jq -c '.' "$RUNNER_TEMP/route53-nameservers.json" > "$RUNNER_TEMP/nameserver-request.json"
+
+            HTTP_STATUS=$(curl --silent --show-error \
+              --output "$RUNNER_TEMP/godaddy-operation.json" \
+              --dump-header "$RUNNER_TEMP/godaddy-operation-headers.txt" \
+              --write-out '%{http_code}' \
+              --request PUT "$NAMESERVERS_URL" \
+              --header "Authorization: Bearer ${GODADDY_PAT}" \
+              --header "Content-Type: application/json" \
+              --header "Accept: application/json" \
+              --data-binary "@$RUNNER_TEMP/nameserver-request.json")
+
+            if [[ "$HTTP_STATUS" != "202" ]]; then
+              echo "::error::GoDaddy nameserver update failed with HTTP ${HTTP_STATUS}."
+              cat "$RUNNER_TEMP/godaddy-operation.json" || true
+              exit 1
+            fi
+
+            OPERATION_ID=$(jq -r '.operationId // empty' "$RUNNER_TEMP/godaddy-operation.json")
+            if [[ -z "$OPERATION_ID" ]]; then
+              echo "::error::GoDaddy accepted the request but returned no operationId."
+              cat "$RUNNER_TEMP/godaddy-operation.json"
+              exit 1
+            fi
+
+            echo "GoDaddy operation accepted: ${OPERATION_ID}"
+            OPERATION_URL="${API_BASE}/operations/${OPERATION_ID}"
+            OPERATION_COMPLETED=false
+
+            for attempt in $(seq 1 120); do
+              HTTP_STATUS=$(curl --silent --show-error \
+                --output "$RUNNER_TEMP/godaddy-operation-status.json" \
+                --write-out '%{http_code}' \
+                --request GET "$OPERATION_URL" \
+                --header "Authorization: Bearer ${GODADDY_PAT}" \
+                --header "Accept: application/json")
+
+              if [[ "$HTTP_STATUS" != "200" ]]; then
+                echo "::error::GoDaddy operation polling failed with HTTP ${HTTP_STATUS}."
+                cat "$RUNNER_TEMP/godaddy-operation-status.json" || true
+                exit 1
+              fi
+
+              STATUS=$(jq -r '.status // "UNKNOWN"' "$RUNNER_TEMP/godaddy-operation-status.json")
+              echo "GoDaddy operation status (attempt ${attempt}/120): ${STATUS}"
+
+              case "$STATUS" in
+                COMPLETED)
+                  OPERATION_COMPLETED=true
+                  break
+                  ;;
+                FAILED|CANCELLED)
+                  echo "::error::GoDaddy nameserver operation ended with status ${STATUS}."
+                  cat "$RUNNER_TEMP/godaddy-operation-status.json"
+                  exit 1
+                  ;;
+                CONFIRMED|EXECUTING|PENDING)
+                  sleep 10
+                  ;;
+                *)
+                  echo "::error::Unexpected GoDaddy operation status: ${STATUS}"
+                  cat "$RUNNER_TEMP/godaddy-operation-status.json"
+                  exit 1
+                  ;;
+              esac
+            done
+
+            if [[ "$OPERATION_COMPLETED" != "true" ]]; then
+              echo "::error::Timed out waiting for GoDaddy nameserver operation to complete."
+              exit 1
+            fi
+          fi
+
+          echo "Verifying GoDaddy domain details..."
+          HTTP_STATUS=$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/godaddy-domain-final.json" \
+            --write-out '%{http_code}' \
+            --request GET "$DOMAIN_URL" \
+            --header "Authorization: Bearer ${GODADDY_PAT}" \
+            --header "Accept: application/json")
+
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "::error::Unable to verify GoDaddy domain details. HTTP ${HTTP_STATUS}."
+            exit 1
+          fi
+
+          jq -r '.nameServers[] | ascii_downcase | sub("\\.$"; "")' \
+            "$RUNNER_TEMP/godaddy-domain-final.json" | sort -u > "$RUNNER_TEMP/godaddy-final-nameservers.txt"
+
+          if ! diff -u "$RUNNER_TEMP/expected-nameservers.txt" "$RUNNER_TEMP/godaddy-final-nameservers.txt"; then
+            echo "::error::GoDaddy nameservers do not match the Route 53 Terraform output."
+            exit 1
+          fi
+
+          echo "Verifying .in registry delegation..."
+          mapfile -t REGISTRY_SERVERS < <(dig +short NS in. | sed 's/\.$//' | sort -u)
+
+          if [[ "${#REGISTRY_SERVERS[@]}" -lt 2 ]]; then
+            echo "::error::Could not discover .in registry nameservers."
+            exit 1
+          fi
+
+          REGISTRY_VERIFIED=false
+          for attempt in $(seq 1 30); do
+            ALL_REGISTRIES_MATCH=true
+
+            for registry_server in "${REGISTRY_SERVERS[@]}"; do
+              ACTUAL_NS=$(dig "@${registry_server}" "${GODADDY_DOMAIN}" NS +norecurse +noall +authority \
+                | awk '$4 == "NS" { gsub(/\.$/, "", $5); print tolower($5) }' \
+                | sort -u)
+
+              if [[ "$ACTUAL_NS" != "$(cat "$RUNNER_TEMP/expected-nameservers.txt")" ]]; then
+                ALL_REGISTRIES_MATCH=false
+                echo "Registry ${registry_server} has not converged yet (attempt ${attempt}/30)."
+                break
+              fi
+            done
+
+            if [[ "$ALL_REGISTRIES_MATCH" == "true" ]]; then
+              REGISTRY_VERIFIED=true
+              break
+            fi
+
+            sleep 20
+          done
+
+          if [[ "$REGISTRY_VERIFIED" != "true" ]]; then
+            echo "::error::The .in registry did not publish the expected Route 53 nameservers before timeout."
+            exit 1
+          fi
+
+          echo "GoDaddy nameservers and .in registry delegation verified successfully."
+
       # UPDATE AWS PARAMETER STORE
       - name: Update Infrastructure Parameters
         if: inputs.action == 'apply'
@@ -473,7 +669,9 @@ jobs:
         if: always() && inputs.manage_lifecycle_lock == true && contains(fromJSON('["apply","destroy"]'), inputs.action) && steps.lifecycle-lock.outcome == 'success'
         shell: bash
         env:
+          ENVIRONMENT: ${{ inputs.environment }}
           LOCK_OWNER: ${{ env.LOCK_OWNER }}
+          AWS_REGION: ap-south-1
         run: |
           set -euo pipefail
           ../scripts/lifecycle-lock.sh release
