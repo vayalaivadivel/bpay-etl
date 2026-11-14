@@ -440,6 +440,7 @@ jobs:
   release-lifecycle-lock:
     name: Release BPAY ETL Lifecycle Lock
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
 
     if: always()
 
