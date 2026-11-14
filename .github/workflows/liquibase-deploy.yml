@@ -323,7 +323,11 @@ jobs:
           ssh-keygen -y \
             -f "$RUNNER_TEMP/bastion.pem" > /dev/null
 
-          ssh -i "$RUNNER_TEMP/bastion.pem" \
+          SSH_LOG="$RUNNER_TEMP/ssh-tunnel.log"
+
+          ssh -vvv \
+            -E "$SSH_LOG" \
+            -i "$RUNNER_TEMP/bastion.pem" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=accept-new \
@@ -336,10 +340,19 @@ jobs:
             ubuntu@"${BASTION_IP}" &
 
           SSH_PID=$!
-
           echo "$SSH_PID" > "$RUNNER_TEMP/ssh-tunnel.pid"
 
-          echo "SSH tunnel started with PID: $SSH_PID"
+          sleep 5
+
+          if ! kill -0 "$SSH_PID" 2>/dev/null; then
+            echo "::error::SSH tunnel terminated during startup."
+            if [[ -f "$SSH_LOG" ]]; then
+              cat "$SSH_LOG"
+            fi
+            exit 1
+          fi
+
+          echo "SSH tunnel process is running. PID: $SSH_PID"
 
       # ==========================================================
       # WAIT FOR DATABASE TUNNEL
@@ -358,6 +371,10 @@ jobs:
 
             if ! kill -0 "$SSH_PID" 2>/dev/null; then
               echo "::error::SSH tunnel process has exited."
+              if [[ -f "$RUNNER_TEMP/ssh-tunnel.log" ]]; then
+                echo "===== SSH tunnel diagnostics ====="
+                cat "$RUNNER_TEMP/ssh-tunnel.log"
+              fi
               exit 1
             fi
 
