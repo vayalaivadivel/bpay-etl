@@ -423,10 +423,12 @@ jobs:
       # ------------------------------------------------------------
 
       - name: Release Lifecycle Lock
-        if: always() && steps.lifecycle-lock.outcome == 'success' && (github.event_name == 'workflow_dispatch' || inputs.manage_lifecycle_lock == true)
+        if: always() && steps.lifecycle-lock.outcome == 'success' && inputs.manage_lifecycle_lock == true
         shell: bash
         env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
           LOCK_OWNER: ${{ env.LOCK_OWNER }}
+          AWS_REGION: ap-south-1
         run: |
           set -euo pipefail
 
