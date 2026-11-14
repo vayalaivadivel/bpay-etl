@@ -22,6 +22,11 @@ on:
           - raw_to_replicated
           - replicated_to_unified
           - all
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
 
   workflow_call:
     inputs:
@@ -33,6 +38,17 @@ on:
         description: "Select ETL execution"
         required: true
         type: string
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
+
+      lock_owner:
+        description: "Existing lifecycle lock owner"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -136,6 +152,39 @@ jobs:
           echo "Service     : ${ECS_SERVICE_NAME}"
           echo "Container   : ${ECS_CONTAINER_NAME}"
           echo "Project     : ${HOP_PROJECT}"
+      # ------------------------------------------------------------
+      # LIFECYCLE LOCK VALIDATION
+      # ------------------------------------------------------------
+
+      - name: Validate Lifecycle Lock
+        id: lifecycle-lock
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          MANAGE_LOCK: ${{ inputs.manage_lifecycle_lock }}
+          EXISTING_OWNER: ${{ inputs.lock_owner }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$MANAGE_LOCK" == "false" ]]; then
+            OWNER="$EXISTING_OWNER"
+
+            if [[ -z "$OWNER" ]]; then
+              echo "::error::Existing lifecycle lock owner is missing."
+              exit 1
+            fi
+
+            LOCK_OWNER="$OWNER" \
+              scripts/lifecycle-lock.sh renew
+          else
+            OWNER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+            LOCK_OWNER="$OWNER" \
+              scripts/lifecycle-lock.sh acquire
+          fi
+
+          echo "Lifecycle lock validated for ${ENVIRONMENT}."
+          echo "LOCK_OWNER=${OWNER}" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------
       # VERIFY ECS CLUSTER
@@ -204,7 +253,6 @@ jobs:
       # ------------------------------------------------------------
       # VERIFY HOP TASK
       # ------------------------------------------------------------
-
       - name: Verify Hop Task
         shell: bash
         run: |
@@ -219,6 +267,20 @@ jobs:
             --query 'tasks[0].{LastStatus:lastStatus,DesiredStatus:desiredStatus,TaskDefinition:taskDefinition,TaskArn:taskArn,StoppedReason:stoppedReason}' \
             --output table
 
+          TASK_STATUS=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER_NAME}" \
+            --tasks "${TASK_ARN}" \
+            --region "${AWS_REGION}" \
+            --query 'tasks[0].lastStatus' \
+            --output text)
+
+          if [[ "${TASK_STATUS}" != "RUNNING" ]]; then
+            echo "::error::Hop ECS task is not running. Status: ${TASK_STATUS}"
+            exit 1
+          fi
+
+          echo "Hop ECS task is running successfully."
+      
       # ------------------------------------------------------------
       # EXECUTE SELECTED HOP WORKFLOWS
       # ------------------------------------------------------------
@@ -356,3 +418,16 @@ jobs:
           echo "Task        : ${TASK_ARN}"
           echo "Project     : ${HOP_PROJECT}"
           echo "======================================="
+      # ------------------------------------------------------------
+      # RELEASE LIFECYCLE LOCK
+      # ------------------------------------------------------------
+
+      - name: Release Lifecycle Lock
+        if: always() && steps.lifecycle-lock.outcome == 'success' && (github.event_name == 'workflow_dispatch' || inputs.manage_lifecycle_lock == true)
+        shell: bash
+        env:
+          LOCK_OWNER: ${{ env.LOCK_OWNER }}
+        run: |
+          set -euo pipefail
+
+          scripts/lifecycle-lock.sh release

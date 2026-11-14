@@ -1,8 +1,9 @@
+
 name: Scheduled Terraform Destroy
 
 on:
   schedule:
-    - cron: '0 15 * * *'   # 8:30 PM IST daily
+    - cron: '0 15 * * *' # 8:30 PM IST daily
 
   workflow_dispatch:
 
@@ -15,13 +16,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-
   terraform-destroy:
-
+    name: Scheduled Infrastructure Destroy
     runs-on: ubuntu-latest
-
     timeout-minutes: 90
-
     environment: dev
 
     defaults:
@@ -29,81 +27,161 @@ jobs:
         working-directory: infra
 
     env:
-      TF_IN_AUTOMATION: true
+      TF_IN_AUTOMATION: "true"
       ENVIRONMENT: dev
+      AWS_REGION: ap-south-1
 
     steps:
+      # --------------------------------------------------------
+      # CHECKOUT REPOSITORY
+      # --------------------------------------------------------
 
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS (OIDC)
+      # --------------------------------------------------------
+      # CONFIGURE AWS CREDENTIALS
+      # --------------------------------------------------------
+
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
           aws-region: ap-south-1
-          
-      - name: Verify AWS Login
-        run: |
-          aws sts get-caller-identity
 
-      - name: Create EC2 PEM file
+      - name: Verify AWS Login
+        run: aws sts get-caller-identity
+
+      # --------------------------------------------------------
+      # ACQUIRE LIFECYCLE LOCK
+      # --------------------------------------------------------
+
+      - name: Acquire Lifecycle Lock
+        id: lifecycle-lock
+        shell: bash
         run: |
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > bastion-key.pem
-          chmod 400 bastion-key.pem
+          set -euo pipefail
+
+          OWNER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          LOCK_OWNER="$OWNER" \
+            ../scripts/lifecycle-lock.sh acquire
+
+          echo "LOCK_OWNER=${OWNER}" >> "$GITHUB_ENV"
+
+          echo "Lifecycle lock acquired for ${ENVIRONMENT}."
+
+      # --------------------------------------------------------
+      # SETUP TERRAFORM
+      # --------------------------------------------------------
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: "1.7.5"
           terraform_wrapper: false
+
+      # --------------------------------------------------------
+      # INITIALIZE TERRAFORM
+      # --------------------------------------------------------
 
       - name: Terraform Init
         run: |
-          terraform init -upgrade \
+          set -euo pipefail
+
+          terraform init \
             -backend-config="key=bpay-etl/${ENVIRONMENT}/terraform.tfstate"
 
+      # --------------------------------------------------------
+      # VALIDATE TERRAFORM
+      # --------------------------------------------------------
+
       - name: Terraform Validate
-        run: terraform validate
-
-      - name: Delete Hop ECR Image
         run: |
-          aws ecr batch-delete-image \
-            --repository-name jungle-ecr-images \
-            --image-ids imageTag=bpay-etl-hop-${ENVIRONMENT} \
-            --region ap-south-1 || true
+          set -euo pipefail
+          terraform validate
 
-          aws ecr batch-delete-image \
-            --repository-name jungle-ecr-images \
-            --image-ids imageTag=bpay-etl-airflow-${ENVIRONMENT} \
-            --region ap-south-1 || true
-
-      - name: Verify AWS Identity
-        run: aws sts get-caller-identity
+      # --------------------------------------------------------
+      # DESTROY INFRASTRUCTURE
+      # --------------------------------------------------------
 
       - name: Terraform Destroy
         shell: bash
-
         run: |
+          set -euo pipefail
 
-          set +e
+          echo "=========================================="
+          echo "BPAY ETL INFRASTRUCTURE DESTROY"
+          echo "Environment: ${ENVIRONMENT}"
+          echo "=========================================="
 
           terraform destroy \
             -parallelism=20 \
             -auto-approve \
-            -var-file=environments/${ENVIRONMENT}.tfvars
-
-          EXIT_CODE=$?
-
-          if [ "$EXIT_CODE" -ne 0 ]; then
-
-            echo "Terraform destroy completed with expected Route53 protection."
-
-            echo "Checking remaining infrastructure..."
-
-            terraform state list || true
-
-            exit 0
-
-          fi
+            -var-file="environments/${ENVIRONMENT}.tfvars"
 
           echo "Terraform destroy completed successfully."
+
+      # --------------------------------------------------------
+      # CLEANUP ECR IMAGES
+      # Runs only after successful Terraform destroy
+      # --------------------------------------------------------
+
+      - name: Delete Hop and Airflow ECR Images
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPOSITORY="jungle-ecr-images"
+
+          echo "Cleaning up BPAY ETL ECR images..."
+
+          for IMAGE_TAG in \
+            "bpay-etl-hop-${ENVIRONMENT}" \
+            "bpay-etl-airflow-${ENVIRONMENT}"
+          do
+            echo "Deleting image tag: ${IMAGE_TAG}"
+
+            if aws ecr batch-delete-image \
+              --repository-name "${REPOSITORY}" \
+              --image-ids "imageTag=${IMAGE_TAG}" \
+              --region "${AWS_REGION}"; then
+
+              echo "Image cleanup completed: ${IMAGE_TAG}"
+            else
+              echo "::warning::ECR cleanup failed for ${IMAGE_TAG}. Please inspect the repository."
+            fi
+          done
+
+      # --------------------------------------------------------
+      # RELEASE LIFECYCLE LOCK
+      # Always release after successful acquisition
+      # --------------------------------------------------------
+
+      - name: Release Lifecycle Lock
+        if: always() && steps.lifecycle-lock.outcome == 'success'
+        shell: bash
+        env:
+          LOCK_OWNER: ${{ env.LOCK_OWNER }}
+        run: |
+          set -euo pipefail
+
+          ../scripts/lifecycle-lock.sh release
+
+          echo "Lifecycle lock released for ${ENVIRONMENT}."
+
+      # --------------------------------------------------------
+      # FINAL SUMMARY
+      # --------------------------------------------------------
+
+      - name: Destroy Summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "BPAY ETL DESTROY COMPLETED"
+          echo "Environment: ${ENVIRONMENT}"
+          echo "Infrastructure: DESTROYED"
+          echo "ECR cleanup: EXECUTED"
+          echo "Lifecycle lock: RELEASED"
+          echo "=========================================="

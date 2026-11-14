@@ -17,6 +17,11 @@ on:
           - dev
           - staging
           - prod
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
 
   workflow_call:
     inputs:
@@ -24,6 +29,18 @@ on:
         description: "Select environment"
         required: true
         type: string
+
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
+
+      lock_owner:
+        description: "Existing lifecycle lock owner"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -95,6 +112,40 @@ jobs:
           echo "Region      : ${AWS_REGION}"
           echo "Cluster     : ${ECS_CLUSTER_NAME}"
           echo "Service     : ${ECS_SERVICE_NAME}"
+
+      # ============================================================
+      # LIFECYCLE LOCK VALIDATION
+      # ============================================================
+
+      - name: Validate Lifecycle Lock
+        id: lifecycle-lock
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          MANAGE_LOCK: ${{ inputs.manage_lifecycle_lock }}
+          EXISTING_OWNER: ${{ inputs.lock_owner }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$MANAGE_LOCK" == "false" ]]; then
+            OWNER="$EXISTING_OWNER"
+
+            if [[ -z "$OWNER" ]]; then
+              echo "::error::Existing lifecycle lock owner is missing."
+              exit 1
+            fi
+
+            LOCK_OWNER="$OWNER" \
+              scripts/lifecycle-lock.sh renew
+          else
+            OWNER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+            LOCK_OWNER="$OWNER" \
+              scripts/lifecycle-lock.sh acquire
+          fi
+
+          echo "Lifecycle lock validated for ${ENVIRONMENT}."
+          echo "LOCK_OWNER=${OWNER}" >> "$GITHUB_ENV"
 
       # ============================================================
       # ECR
@@ -378,3 +429,17 @@ jobs:
           echo
           echo "Use the Hop-ETL workflow separately for ETL execution."
           echo "======================================="
+
+      # ============================================================
+      # RELEASE LIFECYCLE LOCK
+      # ============================================================
+
+      - name: Release Lifecycle Lock
+        if: always() && steps.lifecycle-lock.outcome == 'success' && (github.event_name == 'push' || inputs.manage_lifecycle_lock == true)
+        shell: bash
+        env:
+          LOCK_OWNER: ${{ env.LOCK_OWNER }}
+        run: |
+          set -euo pipefail
+
+          scripts/lifecycle-lock.sh release
