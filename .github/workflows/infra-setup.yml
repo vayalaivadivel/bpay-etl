@@ -22,23 +22,35 @@ name: Infra-Setup
           - apply
           - destroy
 
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
+
   workflow_call:
     inputs:
       environment:
         description: "Deployment environment"
         required: true
         type: string
+
       action:
         description: "Terraform action"
         required: true
         type: string
-    secrets:
-      DB_PASSWORD:
-        required: true
-      SSH_PUBLIC_KEY:
-        required: true
-      EC2_PRIVATE_KEY:
-        required: true
+
+      manage_lifecycle_lock:
+        description: "Manage lifecycle lock in this workflow"
+        required: false
+        type: boolean
+        default: true
+
+      lock_owner:
+        description: "Existing lifecycle lock owner"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -88,6 +100,40 @@ jobs:
           echo "AWS Identity"
           aws sts get-caller-identity
           echo "===================================="
+
+      # LIFECYCLE LOCK VALIDATION
+      - name: Validate Lifecycle Lock
+        id: lifecycle-lock
+        if: contains(fromJSON('["apply","destroy"]'), inputs.action)
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          MANAGE_LOCK: ${{ inputs.manage_lifecycle_lock }}
+          EXISTING_OWNER: ${{ inputs.lock_owner }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$MANAGE_LOCK" == "false" ]]; then
+            OWNER="$EXISTING_OWNER"
+
+            if [[ -z "$OWNER" ]]; then
+              echo "::error::Existing lifecycle lock owner is missing."
+              exit 1
+            fi
+          else
+            OWNER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+
+          if [[ "$MANAGE_LOCK" == "false" ]]; then
+            LOCK_OWNER="$OWNER" \
+              ../scripts/lifecycle-lock.sh renew
+          else
+            LOCK_OWNER="$OWNER" \
+              ../scripts/lifecycle-lock.sh acquire
+          fi
+
+          echo "Lifecycle lock validated for ${ENVIRONMENT}."
+          echo "LOCK_OWNER=${OWNER}" >> "$GITHUB_ENV"
 
       # VALIDATE INPUTS FOR MANUAL AND REUSABLE EXECUTION
       - name: Validate Workflow Inputs
@@ -421,3 +467,13 @@ jobs:
 
           echo "ECR image cleanup completed."
           echo "Shared repository retained: ${ECR_REPOSITORY}"
+
+      # RELEASE LIFECYCLE LOCK
+      - name: Release Lifecycle Lock
+        if: always() && inputs.manage_lifecycle_lock == true && contains(fromJSON('["apply","destroy"]'), inputs.action) && steps.lifecycle-lock.outcome == 'success'
+        shell: bash
+        env:
+          LOCK_OWNER: ${{ env.LOCK_OWNER }}
+        run: |
+          set -euo pipefail
+          ../scripts/lifecycle-lock.sh release

@@ -27,13 +27,50 @@ concurrency:
 
 jobs:
 
+  lifecycle-lock:
+    name: Acquire BPAY ETL Lifecycle Lock
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    outputs:
+      lock_owner: ${{ steps.owner.outputs.lock_owner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
+
+      - name: Acquire lifecycle lock
+        id: owner
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          AWS_REGION: ap-south-1
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          LOCK_OWNER="$OWNER" \
+            scripts/lifecycle-lock.sh acquire
+
+          echo "lock_owner=$OWNER" >> "$GITHUB_OUTPUT"
+
   infrastructure:
     name: "1. Infrastructure Setup"
+    needs: lifecycle-lock
     uses: ./.github/workflows/infra-setup.yml
 
     with:
       environment: ${{ inputs.environment }}
       action: apply
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
     secrets: inherit
 
@@ -43,13 +80,17 @@ jobs:
 
   liquibase:
     name: "2. Liquibase Deployment"
-    needs: infrastructure
+    needs:
+      - infrastructure
+      - lifecycle-lock
 
     uses: ./.github/workflows/liquibase-deploy.yml
 
     with:
       environment: ${{ inputs.environment }}
       action: update
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
     secrets: inherit
 
@@ -59,12 +100,15 @@ jobs:
 
   dms-execution:
     name: "3. DMS Full Load and CDC"
-    needs: liquibase
+    needs:
+      - liquibase
+      - lifecycle-lock
 
     uses: ./.github/workflows/dms-execution.yml
-
     with:
       environment: ${{ inputs.environment }}
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
   # ============================================================
   # STAGE 4: APACHE HOP DEPLOYMENT
@@ -72,12 +116,16 @@ jobs:
 
   hop-deployment:
     name: "4. Apache Hop ECS Deployment"
-    needs: dms-execution
+    needs:
+      - dms-execution
+      - lifecycle-lock
 
     uses: ./.github/workflows/hop-deploy.yml
 
     with:
       environment: ${{ inputs.environment }}
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
   # ============================================================
   # STAGE 5: RAW TO REPLICATED ETL
@@ -85,13 +133,17 @@ jobs:
 
   raw-to-replicated:
     name: "5. Raw to Replicated ETL"
-    needs: hop-deployment
+    needs:
+      - hop-deployment
+      - lifecycle-lock
 
     uses: ./.github/workflows/hop-etl.yml
 
     with:
       environment: ${{ inputs.environment }}
       execution: raw_to_replicated
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
   # ============================================================
   # STAGE 6: REPLICATED TO UNIFIED ETL
@@ -99,13 +151,17 @@ jobs:
 
   replicated-to-unified:
     name: "6. Replicated to Unified ETL"
-    needs: raw-to-replicated
+    needs:
+      - raw-to-replicated
+      - lifecycle-lock
 
     uses: ./.github/workflows/hop-etl.yml
 
     with:
       environment: ${{ inputs.environment }}
       execution: replicated_to_unified
+      manage_lifecycle_lock: false
+      lock_owner: ${{ needs.lifecycle-lock.outputs.lock_owner }}
 
   # ============================================================
   # STAGE 7: FINAL DATA VERIFICATION
@@ -113,7 +169,9 @@ jobs:
 
   final-verification:
     name: "7. Unified Warehouse Verification"
-    needs: replicated-to-unified
+    needs:
+      - replicated-to-unified
+      - lifecycle-lock
 
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -378,3 +436,45 @@ jobs:
           echo "Unified DB  : ${UNIFIED_DB_NAME}"
           echo "Verification: PASSED"
           echo "=========================================="
+
+  release-lifecycle-lock:
+    name: Release BPAY ETL Lifecycle Lock
+    runs-on: ubuntu-latest
+
+    if: always()
+
+    needs:
+      - lifecycle-lock
+      - infrastructure
+      - liquibase
+      - dms-execution
+      - hop-deployment
+      - raw-to-replicated
+      - replicated-to-unified
+      - final-verification
+
+    steps:
+      - name: Checkout repository
+        if: needs.lifecycle-lock.result == 'success'
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        if: needs.lifecycle-lock.result == 'success'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::518060119469:role/bpay-etl-githubaction-role
+          aws-region: ap-south-1
+
+      - name: Release lifecycle lock
+        if: needs.lifecycle-lock.result == 'success'
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          LOCK_OWNER: ${{ needs.lifecycle-lock.outputs.lock_owner }}
+          AWS_REGION: ap-south-1
+        run: |
+          set -euo pipefail
+
+          scripts/lifecycle-lock.sh release
+
+          echo "Lifecycle lock released for ${ENVIRONMENT}."
