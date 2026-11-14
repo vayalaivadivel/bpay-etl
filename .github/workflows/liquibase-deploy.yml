@@ -1,26 +1,18 @@
 name: Liquibase-Deploy
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'database/liquibase/**'
-      - '.github/workflows/liquibase-deploy.yml'
-
   workflow_dispatch:
     inputs:
       environment:
-        description: "Select environment"
+        description: Deployment environment
         required: true
         type: choice
         options:
           - dev
           - staging
           - prod
-
       action:
-        description: "Choose action"
+        description: Liquibase action
         required: true
         type: choice
         default: update
@@ -28,32 +20,20 @@ on:
           - validate
           - update
 
-      manage_lifecycle_lock:
-        description: "Manage lifecycle lock in this workflow"
-        required: false
-        type: boolean
-        default: true
-
   workflow_call:
     inputs:
       environment:
-        description: "Select environment"
         required: true
         type: string
-
       action:
-        description: "Choose action"
-        required: true
+        required: false
         type: string
-
+        default: update
       manage_lifecycle_lock:
-        description: "Manage lifecycle lock in this workflow"
         required: false
         type: boolean
-        default: true
-
+        default: false
       lock_owner:
-        description: "Existing lifecycle lock owner"
         required: false
         type: string
         default: ""
