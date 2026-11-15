@@ -511,25 +511,43 @@ jobs:
           fi
 
           echo "Verifying GoDaddy domain details..."
-          HTTP_STATUS=$(curl --silent --show-error \
-            --output "$RUNNER_TEMP/godaddy-domain-final.json" \
-            --write-out '%{http_code}' \
-            --request GET "$DOMAIN_URL" \
-            --header "Authorization: Bearer ${GODADDY_PAT}" \
-            --header "Accept: application/json")
 
-          if [[ "$HTTP_STATUS" != "200" ]]; then
-            echo "::error::Unable to verify GoDaddy domain details. HTTP ${HTTP_STATUS}."
+          DOMAIN_VERIFIED=false
+
+          for attempt in $(seq 1 6); do
+            HTTP_STATUS=$(curl --silent --show-error \
+              --output "$RUNNER_TEMP/godaddy-domain-final.json" \
+              --write-out '%{http_code}' \
+              --request GET "$DOMAIN_URL" \
+              --header "Authorization: Bearer ${GODADDY_PAT}" \
+              --header "Accept: application/json")
+
+            if [[ "$HTTP_STATUS" == "200" ]] && \
+              jq -e '.nameServers | type == "array" and length >= 2' \
+                "$RUNNER_TEMP/godaddy-domain-final.json" >/dev/null 2>&1; then
+
+              jq -r '.nameServers[] | ascii_downcase | sub("\\.$"; "")' \
+                "$RUNNER_TEMP/godaddy-domain-final.json" \
+                | sort -u > "$RUNNER_TEMP/godaddy-final-nameservers.txt"
+
+              if diff -u "$RUNNER_TEMP/expected-nameservers.txt" \
+                "$RUNNER_TEMP/godaddy-final-nameservers.txt"; then
+                DOMAIN_VERIFIED=true
+                break
+              fi
+            fi
+
+            echo "Domain nameserver verification not ready (attempt ${attempt}/6)."
+            sleep 10
+          done
+
+          if [[ "$DOMAIN_VERIFIED" != "true" ]]; then
+            echo "::error::GoDaddy domain nameserver verification failed."
+            cat "$RUNNER_TEMP/godaddy-domain-final.json" || true
             exit 1
           fi
 
-          jq -r '.nameServers[] | ascii_downcase | sub("\\.$"; "")' \
-            "$RUNNER_TEMP/godaddy-domain-final.json" | sort -u > "$RUNNER_TEMP/godaddy-final-nameservers.txt"
-
-          if ! diff -u "$RUNNER_TEMP/expected-nameservers.txt" "$RUNNER_TEMP/godaddy-final-nameservers.txt"; then
-            echo "::error::GoDaddy nameservers do not match the Route 53 Terraform output."
-            exit 1
-          fi
+          echo "GoDaddy domain nameservers verified successfully."
 
           echo "Verifying .in registry delegation..."
           mapfile -t REGISTRY_SERVERS < <(dig +short NS in. | sed 's/\.$//' | sort -u)
