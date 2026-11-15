@@ -433,6 +433,8 @@ jobs:
             echo "GoDaddy nameservers already match Route 53. No update required."
           else
             echo "GoDaddy nameservers differ. Submitting nameserver update..."
+            IDEMPOTENCY_KEY=$(python3 -c 'import uuid; print(uuid.uuid4())')
+            echo "Generated GoDaddy request idempotency key."
 
             jq -c '.' "$RUNNER_TEMP/route53-nameservers.json" > "$RUNNER_TEMP/nameserver-request.json"
 
@@ -444,6 +446,7 @@ jobs:
               --header "Authorization: Bearer ${GODADDY_PAT}" \
               --header "Content-Type: application/json" \
               --header "Accept: application/json" \
+              --header "Idempotency-Key: ${IDEMPOTENCY_KEY}" \
               --data-binary "@$RUNNER_TEMP/nameserver-request.json")
 
             if [[ "$HTTP_STATUS" != "202" ]]; then
