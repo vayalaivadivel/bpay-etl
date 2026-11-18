@@ -67,4 +67,4 @@ EXPOSE 8080
 
 COPY --chown=airflow:root docker/airflow-entrypoint.sh /opt/airflow/airflow-entrypoint.sh
 RUN chmod +x /opt/airflow/airflow-entrypoint.sh
-CMD ["/opt/airflow/airflow-entrypoint.sh"]
+CMD ["bash", "/opt/airflow/airflow-entrypoint.sh"]
