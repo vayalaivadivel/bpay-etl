@@ -65,15 +65,6 @@ EXPOSE 8080
 # START AIRFLOW
 ##########################################################
 
-CMD ["bash", "-c", "\
-airflow db migrate && \
-(airflow users create \
-  --username vadivel \
-  --password vadivel \
-  --firstname Vadivel \
-  --lastname PM \
-  --role Admin \
-  --email vayalaivadivel@gmail.com || true) && \
-airflow scheduler > /opt/airflow/logs/scheduler.log 2>&1 & \
-sleep 60 && \
-exec airflow webserver"]
+COPY --chown=airflow:root docker/airflow-entrypoint.sh /opt/airflow/airflow-entrypoint.sh
+RUN chmod +x /opt/airflow/airflow-entrypoint.sh
+CMD ["/opt/airflow/airflow-entrypoint.sh"]
