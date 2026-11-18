@@ -158,6 +158,10 @@ resource "aws_ecs_task_definition" "airflow" {
         {
           name  = "AIRFLOW__WEBSERVER__COOKIE_SECURE"
           value = "False"
+        },
+        {
+          name  = "HOP_BASE_URL"
+          value = "http://${var.env}-hop.${var.domain_name}"
         }
       ]
 

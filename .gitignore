@@ -110,3 +110,6 @@ infra/modules/ec2/rendered/
 **/.terraform/
 crash.log
 crash.*.log
+
+# Terraform generated SQL artifacts
+infra/.terraform-rendered/
