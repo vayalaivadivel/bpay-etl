@@ -115,3 +115,4 @@ crash.*.log
 infra/.terraform-rendered/
 __pycache__/
 *.py[cod]
+infra/dev-plan.json
