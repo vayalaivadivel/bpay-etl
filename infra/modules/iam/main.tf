@@ -279,6 +279,7 @@ resource "aws_iam_role" "airflow_ecs_task" {
   })
 }
 
+
 ############################################################
 # AIRFLOW ECS EXEC PERMISSIONS
 ############################################################
@@ -289,6 +290,7 @@ resource "aws_iam_role_policy" "airflow_ecs_exec" {
 
   policy = jsonencode({
     Version = "2012-10-17"
+
     Statement = [
       {
         Effect = "Allow"
@@ -296,6 +298,16 @@ resource "aws_iam_role_policy" "airflow_ecs_exec" {
           "ecs:ListTasks",
           "ecs:DescribeTasks",
           "ecs:ExecuteCommand"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
         ]
         Resource = "*"
       }
