@@ -236,6 +236,8 @@ module "airflow" {
   rds_endpoint = module.rds.rds_endpoint
 
   domain_name = var.domain_name
+
+  ecs_task_role_arn = module.iam.airflow_ecs_task_role_arn
 }
 
 

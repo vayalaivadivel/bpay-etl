@@ -258,3 +258,47 @@ resource "aws_iam_role_policy" "hop_ecs_exec" {
   })
 
 }
+
+
+############################################################
+# ECS TASK ROLE - AIRFLOW
+############################################################
+
+resource "aws_iam_role" "airflow_ecs_task" {
+  name = "${var.app_name}-airflow-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+############################################################
+# AIRFLOW ECS EXEC PERMISSIONS
+############################################################
+
+resource "aws_iam_role_policy" "airflow_ecs_exec" {
+  name = "${var.app_name}-airflow-ecs-exec-policy"
+  role = aws_iam_role.airflow_ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ecs:ExecuteCommand"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}

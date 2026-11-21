@@ -1,152 +1,199 @@
+import json
 import logging
-import xml.etree.ElementTree as ET
+import re
+import shutil
+import subprocess
 
 from datetime import datetime, timedelta
-from urllib.parse import urlencode, urlsplit, urlunsplit
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
-import base64
 
 from airflow import DAG
-from airflow.hooks.base import BaseHook
 from airflow.operators.python import PythonOperator
 
 
 logger = logging.getLogger(__name__)
 
-CONNECTION_ID = "hop_server"
+AWS_REGION = "ap-south-1"
+
+ECS_CLUSTER = "bpay-etl-ecs-dev"
+HOP_SERVICE = "bpay-etl-hop-service-dev"
+HOP_CONTAINER = "bpay-etl-hop"
 
 WORKFLOW_PATH = "/files/workflows/replicated_to_unified.hwf"
+PROJECT_NAME = "card-rewards-etl"
 
-RUN_CONFIGURATION = "local"
+EXECUTION_TIMEOUT_SECONDS = 7100
 
-EXECUTION_TIMEOUT_SECONDS = 7200
+
+def run_command(command, timeout=60):
+    """Execute a local command and return its output."""
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+    output = (result.stdout or "") + (result.stderr or "")
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Command failed with exit code {result.returncode}: "
+            f"{output}"
+        )
+
+    return output
 
 
 def execute_replicated_to_unified():
 
-    connection = BaseHook.get_connection(CONNECTION_ID)
-
-    base_url = connection.host.rstrip("/")
-
-    if not base_url.startswith(("http://", "https://")):
-        base_url = f"http://{base_url}"
-
-    parsed = urlsplit(base_url)
-
-    if connection.port and not parsed.port:
-        netloc = f"{parsed.hostname}:{connection.port}"
-
-        base_url = urlunsplit(
-            (
-                parsed.scheme,
-                netloc,
-                parsed.path,
-                parsed.query,
-                parsed.fragment,
+    # Verify required executables inside the Airflow container.
+    for executable in ("aws", "session-manager-plugin"):
+        if shutil.which(executable) is None:
+            raise RuntimeError(
+                f"Required executable not found in Airflow container: "
+                f"{executable}"
             )
+
+    logger.info("Discovering the running Hop ECS task")
+
+    # Discover the current running Hop task.
+    list_command = [
+        "aws",
+        "ecs",
+        "list-tasks",
+        "--cluster", ECS_CLUSTER,
+        "--service-name", HOP_SERVICE,
+        "--desired-status", "RUNNING",
+        "--region", AWS_REGION,
+        "--output", "json",
+    ]
+
+    task_response = json.loads(run_command(list_command))
+    task_arns = task_response.get("taskArns", [])
+
+    if len(task_arns) != 1:
+        raise RuntimeError(
+            f"Expected exactly one running Hop task, "
+            f"but found {len(task_arns)}: {task_arns}"
         )
 
-    endpoint = f"{base_url}/hop/execWorkflow/"
+    hop_task_arn = task_arns[0]
 
-    params = {
-        "workflow": WORKFLOW_PATH,
-        "runConfig": RUN_CONFIGURATION,
-        "level": "Basic",
-    }
+    logger.info("Discovered Hop task: %s", hop_task_arn)
 
-    url = f"{endpoint}?{urlencode(params)}"
+    # Verify the expected container is running.
+    describe_command = [
+        "aws",
+        "ecs",
+        "describe-tasks",
+        "--cluster", ECS_CLUSTER,
+        "--tasks", hop_task_arn,
+        "--region", AWS_REGION,
+        "--output", "json",
+    ]
 
-    credentials = base64.b64encode(
-        f"{connection.login}:{connection.password}".encode()
-    ).decode()
+    describe_response = json.loads(run_command(describe_command))
+    tasks = describe_response.get("tasks", [])
 
-    request = Request(
-        url,
-        headers={
-            "Authorization": f"Basic {credentials}",
-            "Accept": "application/xml",
-        },
-        method="GET",
+    if len(tasks) != 1:
+        raise RuntimeError(
+            f"Unable to describe Hop task: {hop_task_arn}"
+        )
+
+    containers = tasks[0].get("containers", [])
+
+    hop_container = next(
+        (
+            container
+            for container in containers
+            if container.get("name") == HOP_CONTAINER
+        ),
+        None,
     )
 
+    if not hop_container or hop_container.get("lastStatus") != "RUNNING":
+        raise RuntimeError(
+            f"Container {HOP_CONTAINER} is not running in task "
+            f"{hop_task_arn}"
+        )
+
     logger.info(
-        "Starting Replicated to Unified workflow: %s",
+        "Starting Hop workflow: project=%s, workflow=%s",
+        PROJECT_NAME,
         WORKFLOW_PATH,
     )
 
-    try:
-        with urlopen(
-            request,
-            timeout=EXECUTION_TIMEOUT_SECONDS,
-        ) as response:
+    # Execute Hop CLI inside the running ECS container.
+    remote_command = (
+        f"cd /files || exit 1; "
+        f"/opt/hop/hop-run.sh "
+        f"-j {PROJECT_NAME} "
+        f"-f {WORKFLOW_PATH}; "
+        f"rc=$?; "
+        f"echo HOP_EXIT_CODE=$rc; "
+        f"exit 0"
+    )
 
-            status_code = response.status
+    execute_command = [
+        "aws",
+        "ecs",
+        "execute-command",
+        "--cluster", ECS_CLUSTER,
+        "--task", hop_task_arn,
+        "--container", HOP_CONTAINER,
+        "--region", AWS_REGION,
+        "--interactive",
+        "--command", f"/bin/sh -c '{remote_command}'",
+    ]
 
-            response_body = response.read().decode("utf-8")
+    result = subprocess.run(
+        execute_command,
+        capture_output=True,
+        text=True,
+        timeout=EXECUTION_TIMEOUT_SECONDS,
+        check=False,
+    )
 
-    except HTTPError as exc:
+    output = (result.stdout or "") + (result.stderr or "")
 
-        error_body = exc.read().decode(
-            "utf-8",
-            errors="replace",
+    logger.info("Hop ECS Exec output:\n%s", output)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ECS Exec failed with exit code {result.returncode}: "
+            f"{output}"
         )
 
-        logger.error(
-            "Hop HTTP error %s: %s",
-            exc.code,
-            error_body,
+    # Read the actual Hop CLI exit code from the remote container.
+    matches = re.findall(
+        r"HOP_EXIT_CODE=(\d+)",
+        output,
+    )
+
+    if not matches:
+        raise RuntimeError(
+            "Hop execution exit-code marker was not found. "
+            "Unable to confirm workflow completion."
         )
 
+    hop_exit_code = int(matches[-1])
+
+    if hop_exit_code != 0:
         raise RuntimeError(
-            f"Hop workflow execution failed with HTTP {exc.code}: "
-            f"{error_body}"
-        ) from exc
-
-    except (URLError, TimeoutError) as exc:
-
-        logger.exception(
-            "Unable to execute Replicated to Unified workflow"
-        )
-
-        raise RuntimeError(
-            f"Hop workflow execution request failed: {exc}"
-        ) from exc
-
-    logger.info("Hop HTTP status: %s", status_code)
-    logger.info("Hop execution response: %s", response_body)
-
-    try:
-
-        root = ET.fromstring(response_body)
-
-        result = root.findtext("result")
-        message = root.findtext(
-            "message",
-            default="No message",
-        )
-
-    except ET.ParseError as exc:
-
-        raise RuntimeError(
-            f"Unexpected Hop response format: {response_body}"
-        ) from exc
-
-    if status_code != 200 or result != "OK":
-
-        raise RuntimeError(
-            f"Replicated to Unified workflow failed: {message}"
+            f"Replicated to Unified Hop workflow failed "
+            f"with exit code {hop_exit_code}"
         )
 
     logger.info(
-        "Replicated to Unified workflow completed successfully: %s",
-        message,
+        "Replicated to Unified workflow completed successfully."
     )
 
 
 with DAG(
     dag_id="replicated_to_unified_dag",
-    description="Manually execute Replicated to Unified ETL through Apache Hop",
+    description="Manually execute Replicated to Unified ETL through Apache Hop ECS Exec",
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
